@@ -5,6 +5,7 @@ struct TableView: View {
     @StateObject private var socketManager = PokerSocketManager.shared
     @State private var raiseAmount: Double = 20
     @State private var isSittingOut: Bool = false
+    @State private var lastToggleTime: Date = Date.distantPast
     @State private var buyInAmount: Double = 1000
     @State private var showReloadPanel: Bool = false
     @State private var reloadAmount: Double = 1000
@@ -494,12 +495,11 @@ struct TableView: View {
                     if amISeatedMenu {
                         Toggle("Sit Out Next Hand", isOn: Binding(
                             get: {
-                                let players = socketManager.gameState?["players"] as? [[String: Any]] ?? []
-                                let me = players.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })
-                                return me?["isSittingOut"] as? Bool ?? isSittingOut
+                                return isSittingOut
                             },
                             set: { newValue in
                                 isSittingOut = newValue
+                                lastToggleTime = Date()
                                 socketManager.sendSitOut(isSittingOut: newValue)
                             }
                         ))
@@ -831,6 +831,18 @@ struct TableView: View {
                 }
                 .navigationTitle("Host Settings")
                 .navigationBarItems(trailing: Button("Done") { showHostSettings = false })
+            }
+        }
+        .onReceive(socketManager.$gameState) { newState in
+            // Only sync from server if user hasn't toggled recently (prevents rubber-banding)
+            if Date().timeIntervalSince(lastToggleTime) > 1.0 {
+                if let players = newState?["players"] as? [[String: Any]],
+                   let me = players.first(where: { ($0["name"] as? String) == socketManager.localPlayerName }),
+                   let serverSitOut = me["isSittingOut"] as? Bool {
+                   if isSittingOut != serverSitOut {
+                       isSittingOut = serverSitOut
+                   }
+                }
             }
         }
     }

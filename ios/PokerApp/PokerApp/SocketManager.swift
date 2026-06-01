@@ -31,7 +31,7 @@ class PokerSocketManager: ObservableObject {
     }
     
     func connectWithToken(token: String) {
-        guard let url = URL(string: "http://localhost:3000") else { return }
+        guard let url = URL(string: AppConfig.serverURL) else { return }
         
         manager = SocketManager(socketURL: url, config: [.log(true), .compress, .connectParams(["token": token])])
         socket = manager.defaultSocket

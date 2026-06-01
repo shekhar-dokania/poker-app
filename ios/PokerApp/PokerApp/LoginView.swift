@@ -56,7 +56,7 @@ struct LoginView: View {
         }
         
         let endpoint = isLoginMode ? "login" : "register"
-        guard let url = URL(string: "http://localhost:3000/auth/\(endpoint)") else { return }
+        guard let url = URL(string: "\(AppConfig.serverURL)/auth/\(endpoint)") else { return }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
