@@ -549,6 +549,8 @@ class PokerGame {
       stage: this.stage,
       turnStartTime: this.turnStartTime,
       winnerInfo: this.winnerInfo,
+      runItTwiceData: this.runItTwiceData,
+      ritVotes: this.ritVotes,
       handCount: this.handCount
     };
   }
@@ -569,6 +571,8 @@ class PokerGame {
     game.stage = data.stage || 'waiting';
     game.turnStartTime = data.turnStartTime || null;
     game.winnerInfo = data.winnerInfo || null;
+    game.runItTwiceData = data.runItTwiceData || null;
+    game.ritVotes = data.ritVotes || {};
     game.handCount = data.handCount || 0;
     return game;
   }
