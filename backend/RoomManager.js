@@ -545,7 +545,7 @@ class RoomManager {
             if (!gp.queuedReload) gp.queuedReload = 0;
             gp.queuedReload += finalAmount;
             
-            if (room.game.stage === 'waiting' || room.game.stage === 'showdown') {
+            if (room.game.stage === 'waiting' || room.game.stage === 'showdown' || room.game.stage === 'handEnd') {
                 gp.chips += gp.queuedReload;
                 gp.queuedReload = 0;
                 if (gp.status === 'eliminated') {
@@ -555,6 +555,10 @@ class RoomManager {
             await this.saveRoom(room);
             this.io.to(roomCode).emit('gameState', room.game.getGameState());
             this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
+            
+            if (room.game.stage === 'waiting' && room.game.handCount > 0) {
+                await this.startNextHand(roomCode);
+            }
         }
      }
   }
