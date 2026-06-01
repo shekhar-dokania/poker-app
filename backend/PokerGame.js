@@ -433,6 +433,13 @@ class PokerGame {
   declineRunItTwice() {
       if (this.stage !== 'runItTwicePrompt') return;
       if (this.turnTimer) clearTimeout(this.turnTimer);
+      
+      const cards = this.communityCards.length;
+      if (cards === 0) this.stage = 'preflop';
+      else if (cards === 3) this.stage = 'flop';
+      else if (cards === 4) this.stage = 'turn';
+      else this.stage = 'river';
+
       while (this.stage !== 'handEnd') {
           this.advanceStage();
       }
