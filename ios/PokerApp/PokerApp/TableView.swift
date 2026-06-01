@@ -801,9 +801,8 @@ struct TableView: View {
             }
             
             if socketManager.gameState?["stage"] as? String == "runItTwicePrompt" {
-                Color.black.opacity(0.8).edgesIgnoringSafeArea(.all)
                 VStack(spacing: 20) {
-                    Text("Run It Twice?").font(.largeTitle).foregroundColor(.white).bold()
+                    Text("Run It Twice?").font(.title).foregroundColor(.white).bold()
                     
                     let players = socketManager.gameState?["players"] as? [[String: Any]] ?? []
                     let me = players.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })
@@ -837,6 +836,10 @@ struct TableView: View {
                         Text("Waiting for players...").foregroundColor(.white)
                     }
                 }
+                .padding(24)
+                .background(Color.black.opacity(0.85))
+                .cornerRadius(16)
+                .shadow(radius: 10)
             }
         } // End of outer ZStack
         .navigationBarHidden(true)
