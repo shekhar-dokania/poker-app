@@ -113,6 +113,7 @@ class PokerGame {
         p.status = 'active';
         p.currentBet = 0;
         p.potContribution = 0;
+        p.hasActed = false;
       }
     });
 
