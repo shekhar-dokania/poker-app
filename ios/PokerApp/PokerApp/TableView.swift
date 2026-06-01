@@ -809,7 +809,7 @@ struct TableView: View {
                     let me = players.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })
                     let status = me?["status"] as? String ?? ""
                     let isEligible = status == "active" || status == "all-in"
-                    let ritVotes = socketManager.gameState?["ritVotes"] as? [String: Bool] ?? [:]
+                    let ritVotes = socketManager.gameState?["ritVotes"] as? [String: Any] ?? [:]
                     let myId = me?["id"] as? String ?? ""
                     let hasVoted = ritVotes[myId] != nil
 
