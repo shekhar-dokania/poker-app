@@ -4,7 +4,9 @@ const { PrismaClient } = require('@prisma/client');
 const { createClient } = require('redis');
 
 const prisma = new PrismaClient();
-const redis = createClient();
+const redis = createClient({
+  url: process.env.REDIS_URL || process.env.REDIS_PRIVATE_URL || 'redis://localhost:6379'
+});
 redis.on('error', err => console.log('Redis Client Error', err));
 redis.connect().catch(console.error);
 
