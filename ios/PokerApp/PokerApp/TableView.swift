@@ -128,16 +128,44 @@ struct TableView: View {
                                 .background(Color.black.opacity(0.6))
                                 .cornerRadius(20)
                             
-                            HStack {
-                                if let cards = socketManager.gameState?["communityCards"] as? [String] {
-                                    ForEach(cards, id: \.self) { card in
-                                        CardView(card: card)
+                            if let ritData = socketManager.gameState?["runItTwiceData"] as? [String: Any],
+                               let b1 = ritData["board1"] as? [String: Any], let c1 = b1["communityCards"] as? [String],
+                               let b2 = ritData["board2"] as? [String: Any], let c2 = b2["communityCards"] as? [String] {
+                                VStack(spacing: 8) {
+                                    HStack {
+                                        Text("B1").foregroundColor(.white).font(.caption2).bold()
+                                        ForEach(c1, id: \.self) { card in CardView(card: card) }
+                                    }
+                                    HStack {
+                                        Text("B2").foregroundColor(.white).font(.caption2).bold()
+                                        ForEach(c2, id: \.self) { card in CardView(card: card) }
+                                    }
+                                }
+                            } else {
+                                HStack {
+                                    if let cards = socketManager.gameState?["communityCards"] as? [String] {
+                                        ForEach(cards, id: \.self) { card in
+                                            CardView(card: card)
+                                        }
                                     }
                                 }
                             }
                             
-                            if socketManager.gameState?["stage"] as? String == "showdown" {
-                                if let winnerInfo = socketManager.gameState?["winnerInfo"] as? [String: Any],
+                            if socketManager.gameState?["stage"] as? String == "handEnd" || socketManager.gameState?["stage"] as? String == "showdown" {
+                                if let ritData = socketManager.gameState?["runItTwiceData"] as? [String: Any] {
+                                    VStack(spacing: 6) {
+                                        Text("Run It Twice").font(.headline).foregroundColor(.yellow)
+                                        if let b1 = ritData["board1"] as? [String: Any], let w1 = b1["winners"] as? [String: Any], let win1 = w1["winners"] as? [String] {
+                                            Text("B1: \(win1.joined(separator: ", "))").font(.caption).foregroundColor(.white)
+                                        }
+                                        if let b2 = ritData["board2"] as? [String: Any], let w2 = b2["winners"] as? [String: Any], let win2 = w2["winners"] as? [String] {
+                                            Text("B2: \(win2.joined(separator: ", "))").font(.caption).foregroundColor(.white)
+                                        }
+                                    }
+                                    .padding(10)
+                                    .background(Color.black.opacity(0.8))
+                                    .cornerRadius(12)
+                                } else if let winnerInfo = socketManager.gameState?["winnerInfo"] as? [String: Any],
                                    let winners = winnerInfo["winners"] as? [String] {
                                     VStack(spacing: 6) {
                                         Text("\(winners.joined(separator: ", ")) Wins!")
@@ -147,15 +175,6 @@ struct TableView: View {
                                             .font(.caption2)
                                             .foregroundColor(.white)
                                             .multilineTextAlignment(.center)
-                                        
-                                        Button("Next Hand") {
-                                            socketManager.startGame()
-                                        }
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(Color.blue)
-                                        .foregroundColor(.white)
-                                        .cornerRadius(8)
                                     }
                                     .padding(10)
                                     .background(Color.black.opacity(0.8))
@@ -779,6 +798,45 @@ struct TableView: View {
                 .background(Color(UIColor.systemBackground).opacity(0.2))
                 .cornerRadius(20)
                 .padding()
+            }
+            
+            if socketManager.gameState?["stage"] as? String == "runItTwicePrompt" {
+                Color.black.opacity(0.8).edgesIgnoringSafeArea(.all)
+                VStack(spacing: 20) {
+                    Text("Run It Twice?").font(.largeTitle).foregroundColor(.white).bold()
+                    
+                    let players = socketManager.gameState?["players"] as? [[String: Any]] ?? []
+                    let me = players.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })
+                    let status = me?["status"] as? String ?? ""
+                    let isEligible = status == "active" || status == "all-in"
+                    let ritVotes = socketManager.gameState?["ritVotes"] as? [String: Bool] ?? [:]
+                    let myId = me?["id"] as? String ?? ""
+                    let hasVoted = ritVotes[myId] != nil
+
+                    if isEligible && !hasVoted {
+                        HStack(spacing: 30) {
+                            Button("Yes") {
+                                socketManager.sendRitVote(vote: true)
+                            }
+                            .padding()
+                            .frame(width: 100)
+                            .background(Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                            
+                            Button("No") {
+                                socketManager.sendRitVote(vote: false)
+                            }
+                            .padding()
+                            .frame(width: 100)
+                            .background(Color.red)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                        }
+                    } else {
+                        Text("Waiting for players...").foregroundColor(.white)
+                    }
+                }
             }
         } // End of outer ZStack
         .navigationBarHidden(true)

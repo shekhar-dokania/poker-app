@@ -122,6 +122,8 @@ class PokerGame {
     this.currentHighestBet = 0;
     this.currentMinRaise = this.settings.bigBlind;
     this.winnerInfo = null;
+    this.runItTwiceData = null;
+    this.ritVotes = {};
     this.handCount++;
     this.stage = 'preflop';
     
@@ -278,10 +280,19 @@ class PokerGame {
     const allActed = activePlayers.every(p => p.hasActed);
     
     if (allMatched && allActed) {
-        // Check if betting is effectively over for the hand (fast-forward to handEnd)
+        // Check if betting is effectively over for the hand (fast-forward to handEnd or RIT)
         if (activePlayers.length <= 1 && allInPlayers.length > 0) {
-            while (this.stage !== 'handEnd') {
-               this.advanceStage();
+            if (this.communityCards.length < 5) {
+                this.stage = 'runItTwicePrompt';
+                this.ritVotes = {};
+                this.turnStartTime = Date.now();
+                if (this.turnTimer) clearTimeout(this.turnTimer);
+                // Timer is handled by RoomManager or we can just rely on RoomManager calling handleTimeout?
+                // Wait, if we change stage, RoomManager's handleTimeout might not know about runItTwicePrompt. Let's just let it be handled manually by RoomManager or handleTimeout.
+            } else {
+                while (this.stage !== 'handEnd') {
+                   this.advanceStage();
+                }
             }
         } else {
             this.advanceStage();
@@ -419,6 +430,73 @@ class PokerGame {
     };
   }
 
+  declineRunItTwice() {
+      if (this.stage !== 'runItTwicePrompt') return;
+      if (this.turnTimer) clearTimeout(this.turnTimer);
+      while (this.stage !== 'handEnd') {
+          this.advanceStage();
+      }
+  }
+
+  voteRunItTwice(playerIndex, vote) {
+      if (this.stage !== 'runItTwicePrompt') return;
+      
+      const eligiblePlayers = this.players.filter(p => p.status === 'active' || p.status === 'all-in');
+      const player = this.players[playerIndex];
+      if (!eligiblePlayers.includes(player)) return;
+
+      if (vote === false) {
+          this.declineRunItTwice();
+          return;
+      }
+
+      this.ritVotes[player.id] = true;
+      
+      const allVotedYes = eligiblePlayers.every(p => this.ritVotes[p.id]);
+      if (allVotedYes) {
+          this.executeRunItTwice();
+      }
+  }
+
+  executeRunItTwice() {
+      if (this.turnTimer) clearTimeout(this.turnTimer);
+      
+      const originalPot = this.pot;
+      const originalContributions = this.players.map(p => p.potContribution);
+      const baseCommunityCards = [...this.communityCards];
+      const cardsNeeded = 5 - baseCommunityCards.length;
+
+      // Board 1 (gets ceil remainder)
+      this.pot = Math.ceil(originalPot / 2);
+      this.players.forEach((p, i) => {
+          p.potContribution = Math.ceil(originalContributions[i] / 2);
+      });
+
+      const board1Extra = this.deck.deal(cardsNeeded);
+      this.communityCards = [...baseCommunityCards, ...board1Extra];
+      this.evaluateWinners();
+      const board1Winners = this.winnerInfo;
+
+      // Board 2 (gets floor remainder)
+      this.pot = Math.floor(originalPot / 2);
+      this.players.forEach((p, i) => {
+          p.potContribution = Math.floor(originalContributions[i] / 2);
+      });
+      
+      const board2Extra = this.deck.deal(cardsNeeded);
+      this.communityCards = [...baseCommunityCards, ...board2Extra];
+      this.evaluateWinners();
+      const board2Winners = this.winnerInfo;
+
+      this.runItTwiceData = {
+          board1: { communityCards: [...baseCommunityCards, ...board1Extra], winners: board1Winners },
+          board2: { communityCards: [...baseCommunityCards, ...board2Extra], winners: board2Winners }
+      };
+
+      this.stage = 'handEnd';
+      this.turnStartTime = Date.now();
+  }
+
   getGameState() {
     return {
       stage: this.stage,
@@ -431,6 +509,8 @@ class PokerGame {
       turnStartTime: this.turnStartTime,
       turnTimeLimit: this.settings.turnTimeLimit,
       winnerInfo: this.winnerInfo,
+      runItTwiceData: this.runItTwiceData,
+      ritVotes: this.ritVotes,
       handCount: this.handCount,
       players: this.players.map((p, i) => ({
          id: p.id,

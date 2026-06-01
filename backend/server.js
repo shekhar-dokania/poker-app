@@ -162,6 +162,10 @@ io.on('connection', (socket) => {
      await roomManager.handleAction(socket.id, data);
   });
 
+  socket.on('voteRunItTwice', async (vote) => {
+     await roomManager.handleRitVote(socket.id, vote);
+  });
+
   socket.on('setSittingOut', async (isSittingOut) => {
      await roomManager.handleSitOut(socket.id, isSittingOut);
   });

@@ -200,6 +200,10 @@ class PokerSocketManager: ObservableObject {
         socket.emit("action", ["action": action, "amount": amount])
     }
     
+    func sendRitVote(vote: Bool) {
+        socket.emit("voteRunItTwice", vote)
+    }
+    
     func startGame() {
         socket.emitWithAck("startGame", [:]).timingOut(after: 2) { data in
             if let response = data.first as? [String: Any],

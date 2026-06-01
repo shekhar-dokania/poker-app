@@ -264,6 +264,32 @@ class RoomManager {
      }
   }
 
+  async handleRitVote(socketId, vote) {
+      const roomCode = await this.getSocketRoom(socketId);
+      if (!roomCode) return;
+      
+      const room = await this.getRoom(roomCode);
+      if (room && room.game) {
+         const p = await this.getPlayerBySocket(room, socketId);
+         if(!p) return;
+
+         const playerIndex = room.game.players.findIndex(gp => gp.id === p.id);
+         if (playerIndex === -1) return;
+
+         room.game.voteRunItTwice(playerIndex, vote);
+         await this.saveRoom(room);
+         this.io.to(roomCode).emit('gameState', room.game.getGameState());
+         this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
+
+         if (room.game.stage === 'handEnd' && !room.game.handEndTimer) {
+            // Schedule next hand if RIT caused it to transition to handEnd
+            room.game.handEndTimer = setTimeout(async () => {
+               await this.startNextHand(roomCode);
+            }, 5000);
+         }
+      }
+  }
+
   async handleActionInternal(room, playerId, actionData) {
         const previousStage = room.game.stage;
         room.game.handleAction(playerId, actionData);
