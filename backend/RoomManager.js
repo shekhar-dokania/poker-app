@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const PokerGame = require('./PokerGame');
 const { PrismaClient } = require('@prisma/client');
 const { createClient } = require('redis');
