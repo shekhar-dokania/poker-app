@@ -296,6 +296,7 @@ class PokerGame {
         // Check if betting is effectively over for the hand (fast-forward to handEnd or RIT)
         if (activePlayers.length <= 1 && allInPlayers.length > 0) {
             if (this.communityCards.length < 5) {
+                this.players.forEach(p => p.currentBet = 0);
                 this.stage = 'runItTwicePrompt';
                 this.ritVotes = {};
                 this.turnStartTime = Date.now();
@@ -328,6 +329,7 @@ class PokerGame {
       if (highestContrib > secondHighestContrib) {
           const refundAmount = highestContrib - secondHighestContrib;
           sortedByContrib[0].potContribution -= refundAmount;
+          sortedByContrib[0].currentBet -= refundAmount;
           sortedByContrib[0].chips += refundAmount;
           this.pot -= refundAmount;
       }
