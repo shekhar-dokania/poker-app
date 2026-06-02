@@ -487,6 +487,7 @@ class RoomManager {
          await this.saveRoom(room);
          this.io.to(room.code).emit('gameState', room.game.getGameState());
          this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
+         await this.broadcastPrivateHands(room);
       }
   }
 

@@ -115,6 +115,13 @@ class PokerGame {
     this.winnerInfo = null;
     this.runItTwiceData = null;
     this.ritVotes = {};
+    this.currentTurn = -1;
+    this.turnStartTime = null;
+    this.isAllInShowdown = false;
+    this.isRitShowdown = false;
+    this.ritStage = 'board1';
+    this.ritOriginalPot = 0;
+    this.ritOriginalContributions = [];
 
     const activePlayers = this.players.filter(p => p.status !== 'disconnected' && p.status !== 'eliminated' && !p.isSittingOut);
     if (activePlayers.length < 2) return false;
