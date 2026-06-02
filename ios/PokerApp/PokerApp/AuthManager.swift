@@ -102,6 +102,7 @@ class AuthManager: ObservableObject {
                 if let success = json["success"] as? Bool, success {
                     DispatchQueue.main.async {
                         self.username = newUsername
+                        UserDefaults.standard.set(newUsername, forKey: "username")
                         completion(true, nil)
                     }
                 } else {

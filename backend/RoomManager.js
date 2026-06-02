@@ -345,8 +345,20 @@ class RoomManager {
             room.players.push(player);
         } else {
             player.avatar = avatar; // Update in case it changed
+            player.name = dbUser.username;
             player.connected = true;
             player.socketId = socket.id;
+            
+            if (room.game) {
+                const gamePlayer = room.game.players.find(p => p.id === player.id);
+                if (gamePlayer) {
+                    gamePlayer.name = dbUser.username;
+                    gamePlayer.avatar = avatar;
+                    if (gamePlayer.status === 'disconnected') {
+                        gamePlayer.status = 'waiting';
+                    }
+                }
+            }
         }
 
         await this.setSocketRoom(socket.id, roomCode);
