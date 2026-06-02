@@ -239,6 +239,8 @@ struct TableView: View {
             
             // Determine if the local player is seated in the game
             let amISeated = (socketManager.gameState?["players"] as? [[String: Any]])?.contains(where: { ($0["name"] as? String) == socketManager.localPlayerName }) ?? false
+            let myRoomPlayer = (socketManager.roomState?["players"] as? [[String: Any]])?.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })
+            let myCashedOutChips = myRoomPlayer?["cashedOutChips"] as? Int ?? 0
             
             if !amISeated {
                 // Buy-In Panel for Spectators
@@ -247,47 +249,59 @@ struct TableView: View {
                         .font(.headline)
                         .padding(.top, 10)
                     
-                    VStack(spacing: 12) {
-                        let minBuyInLimit = Double(socketManager.roomSettings?["minBuyIn"] as? Int ?? 100)
-                        let maxBuyInLimit = Double(socketManager.roomSettings?["maxBuyIn"] as? Int ?? 10000)
-                        let safeMax = max(minBuyInLimit, maxBuyInLimit)
-                        let safeAmount = min(max(buyInAmount, minBuyInLimit), safeMax)
-                        
-                        HStack(spacing: 8) {
-                            Button("Min") { buyInAmount = minBuyInLimit }
-                                .buttonStyle(ShortcutButtonStyle())
-                            Button("Half") { buyInAmount = min(safeMax, max(minBuyInLimit, safeMax / 2)) }
-                                .buttonStyle(ShortcutButtonStyle())
-                            Button("Max") { buyInAmount = safeMax }
-                                .buttonStyle(ShortcutButtonStyle())
-                        }
-                        
-                        HStack {
-                            Text("Chips:")
-                                .foregroundColor(.primary)
-                                .bold()
-                                .frame(width: 60, alignment: .leading)
+                    if myCashedOutChips > 0 {
+                        Text("You must return to the table with your previous stack of \(myCashedOutChips) chips.")
+                            .font(.subheadline)
+                            .foregroundColor(.orange)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    } else {
+                        VStack(spacing: 12) {
+                            let minBuyInLimit = Double(socketManager.roomSettings?["minBuyIn"] as? Int ?? 100)
+                            let maxBuyInLimit = Double(socketManager.roomSettings?["maxBuyIn"] as? Int ?? 10000)
+                            let safeMax = max(minBuyInLimit, maxBuyInLimit)
+                            let safeAmount = min(max(buyInAmount, minBuyInLimit), safeMax)
                             
-                            TextField("Amount", value: $buyInAmount, formatter: NumberFormatter())
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .keyboardType(.numberPad)
-                                .frame(width: 80)
+                            HStack(spacing: 8) {
+                                Button("Min") { buyInAmount = minBuyInLimit }
+                                    .buttonStyle(ShortcutButtonStyle())
+                                Button("Half") { buyInAmount = min(safeMax, max(minBuyInLimit, safeMax / 2)) }
+                                    .buttonStyle(ShortcutButtonStyle())
+                                Button("Max") { buyInAmount = safeMax }
+                                    .buttonStyle(ShortcutButtonStyle())
+                            }
                             
-                            Slider(value: Binding(
-                                get: { safeAmount },
-                                set: { buyInAmount = $0 }
-                            ), in: minBuyInLimit...safeMax, step: 1)
-                                .accentColor(.green)
+                            HStack {
+                                Text("Chips:")
+                                    .foregroundColor(.primary)
+                                    .bold()
+                                    .frame(width: 60, alignment: .leading)
+                                
+                                TextField("Amount", value: $buyInAmount, formatter: NumberFormatter())
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .keyboardType(.numberPad)
+                                    .frame(width: 80)
+                                
+                                Slider(value: Binding(
+                                    get: { safeAmount },
+                                    set: { buyInAmount = $0 }
+                                ), in: minBuyInLimit...safeMax, step: 1)
+                                    .accentColor(.green)
+                            }
                         }
+                        .padding(.horizontal)
                     }
-                    .padding(.horizontal)
                     
                     Button(action: {
-                        let minBuyInLimit = Double(socketManager.roomSettings?["minBuyIn"] as? Int ?? 100)
-                        let maxBuyInLimit = Double(socketManager.roomSettings?["maxBuyIn"] as? Int ?? 10000)
-                        let safeMax = max(minBuyInLimit, maxBuyInLimit)
-                        let safeAmount = min(max(buyInAmount, minBuyInLimit), safeMax)
-                        socketManager.sitAtTable(chips: Int(safeAmount))
+                        if myCashedOutChips > 0 {
+                            socketManager.sitAtTable(chips: myCashedOutChips)
+                        } else {
+                            let minBuyInLimit = Double(socketManager.roomSettings?["minBuyIn"] as? Int ?? 100)
+                            let maxBuyInLimit = Double(socketManager.roomSettings?["maxBuyIn"] as? Int ?? 10000)
+                            let safeMax = max(minBuyInLimit, maxBuyInLimit)
+                            let safeAmount = min(max(buyInAmount, minBuyInLimit), safeMax)
+                            socketManager.sitAtTable(chips: Int(safeAmount))
+                        }
                     }) {
                         Text("Take Seat")
                             .font(.headline)

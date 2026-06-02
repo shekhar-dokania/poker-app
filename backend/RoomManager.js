@@ -564,7 +564,7 @@ class RoomManager {
       pendingTableEnd: room.pendingTableEnd,
       players: room.players.map(p => {
           const gp = room.game.players.find(gameP => gameP.id === p.id);
-          return { id: p.id, name: p.name, chips: p.chips, connected: p.connected, isSittingOut: gp ? gp.isSittingOut : false };
+          return { id: p.id, name: p.name, chips: p.chips, cashedOutChips: p.cashedOutChips || 0, connected: p.connected, isSittingOut: gp ? gp.isSittingOut : false };
       }),
       ledgerBalances: room.players
           .filter(p => p.totalBuyIn && p.totalBuyIn > 0)
