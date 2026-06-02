@@ -232,7 +232,7 @@ struct LobbyView: View {
             .navigationBarTitle("Lobby", displayMode: .inline)
             .navigationBarItems(trailing: Button("Logout") {
                 socketManager.disconnect()
-                jwtToken = ""
+                AuthManager.shared.logout()
                 storedUsername = ""
             }.foregroundColor(.red))
             .onAppear {
