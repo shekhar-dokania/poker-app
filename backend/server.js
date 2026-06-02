@@ -209,3 +209,32 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
+
+// --- FAULT TOLERANCE & GRACEFUL SHUTDOWN ---
+
+let isShuttingDown = false;
+const handleShutdown = async () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log('Graceful shutdown initiated...');
+    
+    // Stop accepting new connections
+    server.close();
+    io.emit('serverShutdownWarning', { message: 'Server is restarting. Hands will finish, then games will pause.' });
+    
+    await roomManager.shutdown();
+    console.log('Shutdown complete.');
+    process.exit(0);
+};
+
+process.on('SIGTERM', handleShutdown);
+process.on('SIGINT', handleShutdown);
+
+process.on('uncaughtException', (err) => {
+    console.error('UNCAUGHT EXCEPTION:', err);
+    handleShutdown();
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('UNHANDLED REJECTION:', reason);
+});

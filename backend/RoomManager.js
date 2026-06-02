@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const PokerGame = require('./PokerGame');
 const { PrismaClient } = require('@prisma/client');
 const { createClient } = require('redis');
+const { Mutex } = require('async-mutex');
 
 const prisma = new PrismaClient();
 const redis = createClient({
@@ -13,7 +14,32 @@ redis.connect().catch(console.error);
 class RoomManager {
   constructor(io) {
     this.io = io;
-    setInterval(() => this.processTimeouts(), 1000);
+    this.locks = new Map();
+    this.isShuttingDown = false;
+    this.timeoutInterval = setInterval(() => this.processTimeouts(), 1000);
+  }
+
+  getLock(roomCode) {
+    if (!this.locks.has(roomCode)) {
+      this.locks.set(roomCode, new Mutex());
+    }
+    return this.locks.get(roomCode);
+  }
+
+  async withRoomLock(socketIdOrRoomCode, bySocket, fn) {
+      let roomCode = socketIdOrRoomCode;
+      if (bySocket) {
+          roomCode = await this.getSocketRoom(socketIdOrRoomCode);
+      }
+      if (!roomCode) return;
+      
+      const lock = this.getLock(roomCode);
+      return await lock.runExclusive(async () => {
+          const room = await this.getRoom(roomCode);
+          if (room) {
+              return await fn(room, roomCode);
+          }
+      });
   }
 
   async updateTurnTimer(room) {
@@ -30,83 +56,84 @@ class RoomManager {
       const now = Date.now();
       const expiredRooms = await redis.zRangeByScore('room_turn_timeouts', 0, now);
       for (const roomCode of expiredRooms) {
-          const room = await this.getRoom(roomCode);
-          if (room && room.game && room.game.stage !== 'waiting') {
-              let limit = room.game.settings.turnTimeLimit || 30;
-              if (room.game.stage === 'handEnd') limit = 10;
-              if (room.game.isAllInShowdown) limit = 2; // 2 seconds delay between cards
-              if (room.game.isRitShowdown) limit = 2;
-              
-              const expireTime = room.game.turnStartTime + (limit * 1000);
-              
-              if (now >= expireTime) {
-                  if (room.game.stage === 'handEnd') {
-                      console.log(`Starting next hand in room ${room.code} after handEnd delay`);
-                      await this.startNextHand(roomCode);
-                  } else if (room.game.isAllInShowdown) {
-                      console.log(`Advancing all-in showdown stage in room ${room.code}`);
-                      room.game.advanceStage();
+          await this.withRoomLock(roomCode, false, async (room) => {
+              if (room.game && room.game.stage !== 'waiting') {
+                  let limit = room.game.settings.turnTimeLimit || 30;
+                  if (room.game.stage === 'handEnd') limit = 10;
+                  if (room.game.isAllInShowdown) limit = 2; // 2 seconds delay between cards
+                  if (room.game.isRitShowdown) limit = 2;
+                  
+                  const expireTime = room.game.turnStartTime + (limit * 1000);
+                  
+                  if (now >= expireTime) {
                       if (room.game.stage === 'handEnd') {
-                          room.game.isAllInShowdown = false;
-                          const history = await prisma.handHistory.create({
-                              data: { sessionId: room.sessionId, handData: room.game.toJSON() }
-                          });
-                          room.currentHandHistoryId = history.id;
-                      }
-                      await this.saveRoom(room);
-                      this.io.to(roomCode).emit('gameState', room.game.getGameState());
-                      this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
-                      await this.updateTurnTimer(room);
-                  } else if (room.game.isRitShowdown) {
-                      console.log(`Advancing RIT showdown stage in room ${room.code}`);
-                      room.game.advanceRitStage();
-                      if (room.game.stage === 'handEnd') {
-                          const history = await prisma.handHistory.create({
-                              data: { sessionId: room.sessionId, handData: room.game.toJSON() }
-                          });
-                          room.currentHandHistoryId = history.id;
-                      }
-                      await this.saveRoom(room);
-                      this.io.to(roomCode).emit('gameState', room.game.getGameState());
-                      this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
-                      await this.updateTurnTimer(room);
-                  } else if (room.game.stage === 'runItTwicePrompt') {
-                      console.log(`Auto-declining RIT in room ${room.code} due to timeout`);
-                      room.game.declineRunItTwice();
-                      await this.saveRoom(room);
-                      this.io.to(roomCode).emit('gameState', room.game.getGameState());
-                      this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
-                      await this.updateTurnTimer(room);
-                      
-                      if (room.game.stage === 'handEnd') {
-                          const history = await prisma.handHistory.create({
-                              data: {
-                                  sessionId: room.sessionId,
-                                  handData: room.game.toJSON()
-                              }
-                          });
-                          room.currentHandHistoryId = history.id;
+                          console.log(`Starting next hand in room ${room.code} after handEnd delay`);
+                          await this.startNextHandInternal(room);
+                      } else if (room.game.isAllInShowdown) {
+                          console.log(`Advancing all-in showdown stage in room ${room.code}`);
+                          room.game.advanceStage();
+                          if (room.game.stage === 'handEnd') {
+                              room.game.isAllInShowdown = false;
+                              const history = await prisma.handHistory.create({
+                                  data: { sessionId: room.sessionId, handData: room.game.toJSON() }
+                              });
+                              room.currentHandHistoryId = history.id;
+                          }
                           await this.saveRoom(room);
+                          this.io.to(room.code).emit('gameState', room.game.getGameState());
+                          this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
+                          await this.updateTurnTimer(room);
+                      } else if (room.game.isRitShowdown) {
+                          console.log(`Advancing RIT showdown stage in room ${room.code}`);
+                          room.game.advanceRitStage();
+                          if (room.game.stage === 'handEnd') {
+                              const history = await prisma.handHistory.create({
+                                  data: { sessionId: room.sessionId, handData: room.game.toJSON() }
+                              });
+                              room.currentHandHistoryId = history.id;
+                          }
+                          await this.saveRoom(room);
+                          this.io.to(room.code).emit('gameState', room.game.getGameState());
+                          this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
+                          await this.updateTurnTimer(room);
+                      } else if (room.game.stage === 'runItTwicePrompt') {
+                          console.log(`Auto-declining RIT in room ${room.code} due to timeout`);
+                          room.game.declineRunItTwice();
+                          await this.saveRoom(room);
+                          this.io.to(room.code).emit('gameState', room.game.getGameState());
+                          this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
+                          await this.updateTurnTimer(room);
+                          
+                          if (room.game.stage === 'handEnd') {
+                              const history = await prisma.handHistory.create({
+                                  data: {
+                                      sessionId: room.sessionId,
+                                      handData: room.game.toJSON()
+                                  }
+                              });
+                              room.currentHandHistoryId = history.id;
+                              await this.saveRoom(room);
+                          }
+                      } else {
+                          const player = room.game.players[room.game.currentTurn];
+                          if (player && player.status === 'active') {
+                              let action = 'fold';
+                              if (player.currentBet === room.game.currentHighestBet) {
+                                  action = 'check';
+                              }
+                              console.log(`Auto-acting ${action} for player ${player.name} in room ${room.code} due to timeout`);
+                              await this.handleActionInternal(room, player.id, { action });
+                          } else {
+                              await this.updateTurnTimer(room);
+                          }
                       }
                   } else {
-                      const player = room.game.players[room.game.currentTurn];
-                      if (player && player.status === 'active') {
-                          let action = 'fold';
-                          if (player.currentBet === room.game.currentHighestBet) {
-                              action = 'check';
-                          }
-                          console.log(`Auto-acting ${action} for player ${player.name} in room ${room.code} due to timeout`);
-                          await this.handleActionInternal(room, player.id, { action });
-                      } else {
-                          await this.updateTurnTimer(room);
-                      }
+                      await this.updateTurnTimer(room);
                   }
               } else {
-                  await this.updateTurnTimer(room);
+                  await redis.zRem('room_turn_timeouts', room.code);
               }
-          } else {
-              await redis.zRem('room_turn_timeouts', roomCode);
-          }
+          });
       }
   }
 
@@ -172,7 +199,6 @@ class RoomManager {
                   createdAt: room.createdAt
               });
           } else {
-              // Cleanup dangling room code
               await this.removeUserRoom(userId, code);
           }
       }
@@ -224,8 +250,8 @@ class RoomManager {
   }
 
   async createRoom(user, gameType, settings, socket, clubId = null) {
+    if (this.isShuttingDown) throw new Error("Server is shutting down. Cannot create new rooms.");
     const roomCode = await this.generateRoomCode();
-    const game = new PokerGame(gameType, settings);
     
     const dbSession = await prisma.gameSession.create({
         data: {
@@ -239,8 +265,8 @@ class RoomManager {
     const newRoom = {
       code: roomCode,
       sessionId: dbSession.id,
-      host: user.userId, // Postgres UUID
-      clubId: clubId, // Save clubId to enforce membership
+      host: user.userId, 
+      clubId: clubId, 
       createdAt: Date.now(),
       gameType: gameType || 'holdem',
       players: [],
@@ -256,106 +282,122 @@ class RoomManager {
   }
 
   async joinRoom(roomCode, user, socket) {
-    const room = await this.getRoom(roomCode);
-    if (!room) {
-      throw new Error('Room not found');
-    }
-
-    if (room.clubId) {
-        const membership = await prisma.clubMember.findUnique({
-            where: { clubId_userId: { clubId: room.clubId, userId: user.userId } }
-        });
-        if (!membership || membership.status !== 'APPROVED') {
-            throw new Error("You are not an approved member of this club");
+    const lock = this.getLock(roomCode);
+    return await lock.runExclusive(async () => {
+        const room = await this.getRoom(roomCode);
+        if (!room) {
+          throw new Error('Room not found');
         }
-    }
 
-    let player = room.players.find(p => p.id === user.userId);
-    if (!player) {
-        player = {
-          id: user.userId,
-          name: user.username,
-          socketId: socket.id,
-          chips: 0,
-          totalBuyIn: 0,
-          connected: true
-        };
-        room.players.push(player);
-    } else {
-        player.connected = true;
-        player.socketId = socket.id;
-    }
+        if (room.clubId) {
+            const membership = await prisma.clubMember.findUnique({
+                where: { clubId_userId: { clubId: room.clubId, userId: user.userId } }
+            });
+            if (!membership || membership.status !== 'APPROVED') {
+                throw new Error("You are not an approved member of this club");
+            }
+        }
 
-    await this.setSocketRoom(socket.id, roomCode);
-    await this.addUserRoom(user.userId, roomCode);
-    await this.saveRoom(room);
-    
-    socket.join(roomCode);
-    
-    this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
-    this.io.to(roomCode).emit('gameState', room.game.getGameState());
-    await this.broadcastPrivateHands(room);
-    
-    return await this.getRoomState(roomCode);
+        let player = room.players.find(p => p.id === user.userId);
+        if (!player) {
+            player = {
+              id: user.userId,
+              name: user.username,
+              socketId: socket.id,
+              chips: 0,
+              totalBuyIn: 0,
+              connected: true
+            };
+            room.players.push(player);
+        } else {
+            player.connected = true;
+            player.socketId = socket.id;
+        }
+
+        await this.setSocketRoom(socket.id, roomCode);
+        await this.addUserRoom(user.userId, roomCode);
+        await this.saveRoom(room);
+        
+        socket.join(roomCode);
+        
+        this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
+        this.io.to(roomCode).emit('gameState', room.game.getGameState());
+        await this.broadcastPrivateHands(room);
+        
+        return await this.getRoomState(roomCode);
+    });
   }
 
   async handleAction(socketId, actionData) {
-     const roomCode = await this.getSocketRoom(socketId);
-     if (!roomCode) return;
-     
-     const room = await this.getRoom(roomCode);
-     if (room && room.game) {
-        const p = await this.getPlayerBySocket(room, socketId);
-        if(!p) return;
+     await this.withRoomLock(socketId, true, async (room) => {
+         if (!room.game) return;
 
-        await this.handleActionInternal(room, p.id, actionData);
-     }
-  }
+         // Idempotency Tracking
+         if (actionData.actionId) {
+            room.processedActions = room.processedActions || [];
+            if (room.processedActions.includes(actionData.actionId)) return;
+            room.processedActions.push(actionData.actionId);
+            if (room.processedActions.length > 50) room.processedActions.shift();
+         }
 
-  async handleRitVote(socketId, vote) {
-      const roomCode = await this.getSocketRoom(socketId);
-      if (!roomCode) return;
-      
-      const room = await this.getRoom(roomCode);
-      if (room && room.game) {
          const p = await this.getPlayerBySocket(room, socketId);
          if(!p) return;
 
-         const playerIndex = room.game.players.findIndex(gp => gp.id === p.id);
-         if (playerIndex === -1) return;
+         await this.handleActionInternal(room, p.id, actionData);
+     });
+  }
 
-         const previousStage = room.game.stage;
-         room.game.voteRunItTwice(playerIndex, vote);
-         
-         if (previousStage !== 'handEnd' && room.game.stage === 'handEnd') {
-             const history = await prisma.handHistory.create({
-                 data: {
-                     sessionId: room.sessionId,
-                     handData: room.game.toJSON()
-                 }
-             });
-             room.currentHandHistoryId = history.id;
-         }
-         
-         await this.saveRoom(room);
-         this.io.to(roomCode).emit('gameState', room.game.getGameState());
-         this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
-         await this.updateTurnTimer(room);
+  async handleRitVote(socketId, voteData) {
+      await this.withRoomLock(socketId, true, async (room) => {
+          if (!room.game) return;
+          
+          if (voteData.actionId) {
+             room.processedActions = room.processedActions || [];
+             if (room.processedActions.includes(voteData.actionId)) return;
+             room.processedActions.push(voteData.actionId);
+             if (room.processedActions.length > 50) room.processedActions.shift();
+          }
 
-         if (room.game.stage === 'handEnd' && !room.game.handEndTimer) {
-            // Schedule next hand if RIT caused it to transition to handEnd
-            room.game.handEndTimer = setTimeout(async () => {
-               await this.startNextHand(roomCode);
-            }, 5000);
-         }
-      }
+          const p = await this.getPlayerBySocket(room, socketId);
+          if(!p) return;
+
+          const playerIndex = room.game.players.findIndex(gp => gp.id === p.id);
+          if (playerIndex === -1) return;
+
+          const vote = voteData.vote !== undefined ? voteData.vote : voteData;
+
+          const previousStage = room.game.stage;
+          room.game.voteRunItTwice(playerIndex, vote);
+          
+          if (previousStage !== 'handEnd' && room.game.stage === 'handEnd') {
+              const history = await prisma.handHistory.create({
+                  data: {
+                      sessionId: room.sessionId,
+                      handData: room.game.toJSON()
+                  }
+              });
+              room.currentHandHistoryId = history.id;
+          }
+          
+          await this.saveRoom(room);
+          this.io.to(room.code).emit('gameState', room.game.getGameState());
+          this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
+          await this.updateTurnTimer(room);
+
+          if (room.game.stage === 'handEnd' && !room.game.handEndTimer) {
+             room.game.handEndTimer = setTimeout(async () => {
+                await this.withRoomLock(room.code, false, async (r) => {
+                    await this.startNextHandInternal(r);
+                });
+             }, 5000);
+          }
+      });
   }
 
   async handleActionInternal(room, playerId, actionData) {
         const previousStage = room.game.stage;
         room.game.handleAction(playerId, actionData);
         
-        // If hand just completed, save HandHistory
         if (previousStage !== 'handEnd' && room.game.stage === 'handEnd' && room.game.winnerInfo) {
             const history = await prisma.handHistory.create({
                 data: {
@@ -365,7 +407,6 @@ class RoomManager {
             });
             room.currentHandHistoryId = history.id;
         } else if (previousStage === 'handEnd' && room.game.stage === 'handEnd' && room.currentHandHistoryId) {
-            // Update existing hand history if a player reveals/mucks
             await prisma.handHistory.update({
                 where: { id: room.currentHandHistoryId },
                 data: { handData: room.game.toJSON() }
@@ -379,74 +420,81 @@ class RoomManager {
         await this.broadcastPrivateHands(room);
         await this.updateTurnTimer(room);
         
-        // If a player bought in and the game is waiting to resume, try to auto-start
         if (actionData.action === 'buyIn' && room.game.stage === 'waiting' && room.game.handCount > 0) {
-            await this.startNextHand(room.code);
+            await this.startNextHandInternal(room);
         }
   }
 
-  async handleSitOut(socketId, isSittingOut) {
-     const roomCode = await this.getSocketRoom(socketId);
-     if (!roomCode) return;
-     
-     const room = await this.getRoom(roomCode);
-     if (room && room.game) {
-        const sp = await this.getPlayerBySocket(room, socketId);
-        if(!sp) return;
-        
-        const player = room.game.players.find(p => p.id === sp.id);
-        if (player) {
-            player.isSittingOut = isSittingOut;
-            if (room.game.stage === 'waiting' || room.game.stage === 'handEnd') {
-                if (isSittingOut && player.status !== 'eliminated') {
-                    player.status = 'sitting_out';
-                } else if (!isSittingOut && player.status === 'sitting_out') {
-                    player.status = 'waiting';
-                }
-            }
-            await this.saveRoom(room);
-            this.io.to(roomCode).emit('gameState', room.game.getGameState());
-            this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
-            
-            // Try to auto-start if in waiting and game has already begun once
-            if (room.game.stage === 'waiting' && room.game.handCount > 0 && !isSittingOut) {
-                await this.startNextHand(roomCode);
-            }
-        }
-     }
+  async handleSitOut(socketId, data) {
+     await this.withRoomLock(socketId, true, async (room) => {
+         if (!room.game) return;
+         
+         const isSittingOut = data.isSittingOut !== undefined ? data.isSittingOut : data;
+         
+         if (data.actionId) {
+            room.processedActions = room.processedActions || [];
+            if (room.processedActions.includes(data.actionId)) return;
+            room.processedActions.push(data.actionId);
+            if (room.processedActions.length > 50) room.processedActions.shift();
+         }
+
+         const sp = await this.getPlayerBySocket(room, socketId);
+         if(!sp) return;
+         
+         const player = room.game.players.find(p => p.id === sp.id);
+         if (player) {
+             player.isSittingOut = isSittingOut;
+             if (room.game.stage === 'waiting' || room.game.stage === 'handEnd') {
+                 if (isSittingOut && player.status !== 'eliminated') {
+                     player.status = 'sitting_out';
+                 } else if (!isSittingOut && player.status === 'sitting_out') {
+                     player.status = 'waiting';
+                 }
+             }
+             await this.saveRoom(room);
+             this.io.to(room.code).emit('gameState', room.game.getGameState());
+             this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
+             
+             if (room.game.stage === 'waiting' && room.game.handCount > 0 && !isSittingOut) {
+                 await this.startNextHandInternal(room);
+             }
+         }
+     });
   }
 
-   async startNextHand(roomCode) {
-      const room = await this.getRoom(roomCode);
-      if (room && room.game) {
-         if (room.pendingTableEnd) {
-             await this.finalizeTable(roomCode);
-             return;
-         }
-         const success = room.game.startGame();
-         if (success) {
-            await this.saveRoom(room);
-            this.io.to(roomCode).emit('gameState', room.game.getGameState());
-            this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
-            await this.broadcastPrivateHands(room);
-            await this.updateTurnTimer(room);
-         } else {
-            console.log("Not enough players to start next hand in room: " + roomCode);
-            room.game.stage = 'waiting';
-            await this.saveRoom(room);
-            this.io.to(roomCode).emit('gameState', room.game.getGameState());
-            this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
-         }
+  async startNextHand(roomCode) {
+     await this.withRoomLock(roomCode, false, async (room) => {
+         await this.startNextHandInternal(room);
+     });
+  }
+
+  async startNextHandInternal(room) {
+      if (this.isShuttingDown || room.pendingTableEnd) {
+          await this.finalizeTableInternal(room);
+          return;
       }
-   }
+      
+      const success = room.game.startGame();
+      if (success) {
+         await this.saveRoom(room);
+         this.io.to(room.code).emit('gameState', room.game.getGameState());
+         this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
+         await this.broadcastPrivateHands(room);
+         await this.updateTurnTimer(room);
+      } else {
+         console.log("Not enough players to start next hand in room: " + room.code);
+         room.game.stage = 'waiting';
+         await this.saveRoom(room);
+         this.io.to(room.code).emit('gameState', room.game.getGameState());
+         this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
+      }
+  }
 
   async startGame(socketId) {
-     const roomCode = await this.getSocketRoom(socketId);
-     if (!roomCode) return;
-     const room = await this.getRoom(roomCode);
-     if (room && room.game) {
-        if (room.pendingTableEnd) {
-            await this.finalizeTable(roomCode);
+     await this.withRoomLock(socketId, true, async (room) => {
+        if (!room.game) return;
+        if (this.isShuttingDown || room.pendingTableEnd) {
+            await this.finalizeTableInternal(room);
             return;
         }
 
@@ -458,14 +506,14 @@ class RoomManager {
         const success = room.game.startGame();
         if (success) {
            await this.saveRoom(room);
-           this.io.to(roomCode).emit('gameState', room.game.getGameState());
-           this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
+           this.io.to(room.code).emit('gameState', room.game.getGameState());
+           this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
            await this.broadcastPrivateHands(room);
            await this.updateTurnTimer(room);
         } else {
            throw new Error("Not enough players to start");
         }
-     }
+     });
   }
 
   async broadcastPrivateHands(room) {
@@ -480,15 +528,14 @@ class RoomManager {
   async handleDisconnect(socket) {
     const roomCode = await this.getSocketRoom(socket.id);
     if (roomCode) {
-      const room = await this.getRoom(roomCode);
-      if (room) {
-        const player = await this.getPlayerBySocket(room, socket.id);
-        if (player) {
-          player.connected = false;
-          await this.saveRoom(room);
-          this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
-        }
-      }
+      await this.withRoomLock(roomCode, false, async (room) => {
+          const player = await this.getPlayerBySocket(room, socket.id);
+          if (player) {
+            player.connected = false;
+            await this.saveRoom(room);
+            this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
+          }
+      });
       await this.deleteSocketRoom(socket.id);
     }
   }
@@ -522,145 +569,187 @@ class RoomManager {
     };
   }
 
-  async handleSitAtTable(socketId, chips) {
-     const roomCode = await this.getSocketRoom(socketId);
-     if (!roomCode) return;
-     
-     const room = await this.getRoom(roomCode);
-     if (room && room.game) {
-        const spectator = await this.getPlayerBySocket(room, socketId);
-        if (!spectator) return;
-        
-        const alreadySeated = room.game.players.find(p => p.id === spectator.id);
-        if (alreadySeated) return;
-        
-        const minBuyIn = room.settings.minBuyIn || 100;
-        const maxBuyIn = room.settings.maxBuyIn || 10000;
-        const finalChips = Math.max(minBuyIn, Math.min(chips, maxBuyIn));
-        
-        spectator.totalBuyIn = (spectator.totalBuyIn || 0) + finalChips;
-        spectator.chips = finalChips;
-        room.game.addPlayer({
-            id: spectator.id,
-            name: spectator.name,
-            chips: finalChips
-        });
-        
-        await this.saveRoom(room);
-        this.io.to(roomCode).emit('gameState', room.game.getGameState());
-        this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
-     }
+  async handleSitAtTable(socketId, data) {
+     await this.withRoomLock(socketId, true, async (room) => {
+         if (!room.game) return;
+         
+         const chips = data.chips !== undefined ? data.chips : data;
+         
+         if (data.actionId) {
+            room.processedActions = room.processedActions || [];
+            if (room.processedActions.includes(data.actionId)) return;
+            room.processedActions.push(data.actionId);
+            if (room.processedActions.length > 50) room.processedActions.shift();
+         }
+
+         const spectator = await this.getPlayerBySocket(room, socketId);
+         if (!spectator) return;
+         
+         const alreadySeated = room.game.players.find(p => p.id === spectator.id);
+         if (alreadySeated) return;
+         
+         const minBuyIn = room.settings.minBuyIn || 100;
+         const maxBuyIn = room.settings.maxBuyIn || 10000;
+         const finalChips = Math.max(minBuyIn, Math.min(chips, maxBuyIn));
+         
+         spectator.totalBuyIn = (spectator.totalBuyIn || 0) + finalChips;
+         spectator.chips = finalChips;
+         room.game.addPlayer({
+             id: spectator.id,
+             name: spectator.name,
+             chips: finalChips
+         });
+         
+         await this.saveRoom(room);
+         this.io.to(room.code).emit('gameState', room.game.getGameState());
+         this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
+     });
   }
 
-  async handleStandUp(socketId) {
-     const roomCode = await this.getSocketRoom(socketId);
-     if (!roomCode) return;
-     
-     const room = await this.getRoom(roomCode);
-     if (room && room.game) {
-        const sp = await this.getPlayerBySocket(room, socketId);
-        if(!sp) return;
-        
-        const gpIndex = room.game.players.findIndex(p => p.id === sp.id);
-        if (gpIndex !== -1) {
-            const gp = room.game.players[gpIndex];
-            if (room.game.stage === 'waiting' || room.game.stage === 'handEnd') {
-                sp.chips = gp.chips;
-                room.game.players.splice(gpIndex, 1);
-            } else {
-                gp.isStandingUp = true;
-                if (gp.status === 'active') {
-                    if (room.game.players[room.game.currentTurn] && room.game.players[room.game.currentTurn].id === sp.id) {
-                        room.game.handleAction(sp.id, {action: 'fold'});
-                    } else {
-                        gp.status = 'folded';
-                    }
-                }
-            }
-            await this.saveRoom(room);
-            this.io.to(roomCode).emit('gameState', room.game.getGameState());
-            this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
-        }
-     }
+  async handleStandUp(socketId, data = {}) {
+     await this.withRoomLock(socketId, true, async (room) => {
+         if (!room.game) return;
+         
+         if (data.actionId) {
+            room.processedActions = room.processedActions || [];
+            if (room.processedActions.includes(data.actionId)) return;
+            room.processedActions.push(data.actionId);
+            if (room.processedActions.length > 50) room.processedActions.shift();
+         }
+
+         const sp = await this.getPlayerBySocket(room, socketId);
+         if(!sp) return;
+         
+         const gpIndex = room.game.players.findIndex(p => p.id === sp.id);
+         if (gpIndex !== -1) {
+             const gp = room.game.players[gpIndex];
+             if (room.game.stage === 'waiting' || room.game.stage === 'handEnd') {
+                 sp.chips = gp.chips;
+                 room.game.players.splice(gpIndex, 1);
+             } else {
+                 gp.isStandingUp = true;
+                 if (gp.status === 'active') {
+                     if (room.game.players[room.game.currentTurn] && room.game.players[room.game.currentTurn].id === sp.id) {
+                         room.game.handleAction(sp.id, {action: 'fold'});
+                     } else {
+                         gp.status = 'folded';
+                     }
+                 }
+             }
+             await this.saveRoom(room);
+             this.io.to(room.code).emit('gameState', room.game.getGameState());
+             this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
+         }
+     });
   }
 
-  async handleReloadChips(socketId, amount) {
-     const roomCode = await this.getSocketRoom(socketId);
-     if (!roomCode) return;
-     
-     const room = await this.getRoom(roomCode);
-     if (room && room.game) {
-        const sp = await this.getPlayerBySocket(room, socketId);
-        if(!sp) return;
+  async handleReloadChips(socketId, data) {
+     await this.withRoomLock(socketId, true, async (room) => {
+         if (!room.game) return;
+         
+         const amount = data.amount !== undefined ? data.amount : data;
+         if (data.actionId) {
+            room.processedActions = room.processedActions || [];
+            if (room.processedActions.includes(data.actionId)) return;
+            room.processedActions.push(data.actionId);
+            if (room.processedActions.length > 50) room.processedActions.shift();
+         }
 
-        const gpIndex = room.game.players.findIndex(p => p.id === sp.id);
-        if (gpIndex !== -1) {
-            const gp = room.game.players[gpIndex];
-            
-            const minBuyIn = room.settings.minBuyIn || 100;
-            const maxBuyIn = room.settings.maxBuyIn || 10000;
-            const finalAmount = Math.max(minBuyIn, Math.min(amount, maxBuyIn));
-            
-            sp.totalBuyIn = (sp.totalBuyIn || 0) + finalAmount;
-            
-            if (!gp.queuedReload) gp.queuedReload = 0;
-            gp.queuedReload += finalAmount;
-            
-            if (room.game.stage === 'waiting' || room.game.stage === 'showdown' || room.game.stage === 'handEnd') {
-                gp.chips += gp.queuedReload;
-                gp.queuedReload = 0;
-                if (gp.status === 'eliminated') {
-                    gp.status = 'waiting';
-                }
-            }
-            await this.saveRoom(room);
-            this.io.to(roomCode).emit('gameState', room.game.getGameState());
-            this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
-            
-            if (room.game.stage === 'waiting' && room.game.handCount > 0) {
-                await this.startNextHand(roomCode);
-            }
-        }
-     }
+         const sp = await this.getPlayerBySocket(room, socketId);
+         if(!sp) return;
+
+         const gpIndex = room.game.players.findIndex(p => p.id === sp.id);
+         if (gpIndex !== -1) {
+             const gp = room.game.players[gpIndex];
+             
+             const minBuyIn = room.settings.minBuyIn || 100;
+             const maxBuyIn = room.settings.maxBuyIn || 10000;
+             const finalAmount = Math.max(minBuyIn, Math.min(amount, maxBuyIn));
+             
+             sp.totalBuyIn = (sp.totalBuyIn || 0) + finalAmount;
+             
+             if (!gp.queuedReload) gp.queuedReload = 0;
+             gp.queuedReload += finalAmount;
+             
+             if (room.game.stage === 'waiting' || room.game.stage === 'showdown' || room.game.stage === 'handEnd') {
+                 gp.chips += gp.queuedReload;
+                 gp.queuedReload = 0;
+                 if (gp.status === 'eliminated') {
+                     gp.status = 'waiting';
+                 }
+             }
+             await this.saveRoom(room);
+             this.io.to(room.code).emit('gameState', room.game.getGameState());
+             this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
+             
+             if (room.game.stage === 'waiting' && room.game.handCount > 0) {
+                 await this.startNextHandInternal(room);
+             }
+         }
+     });
   }
 
   async updateSettings(socketId, newSettings) {
-     const roomCode = await this.getSocketRoom(socketId);
-     if (!roomCode) return;
-     
-     const room = await this.getRoom(roomCode);
-     if (room) {
+     await this.withRoomLock(socketId, true, async (room) => {
          const sp = await this.getPlayerBySocket(room, socketId);
          if (sp && room.host === sp.id) {
              room.settings = { ...room.settings, ...newSettings };
              room.game.settings = room.settings;
              await this.saveRoom(room);
-             this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
+             this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
          }
-     }
+     });
   }
 
   async requestEndTable(socketId) {
-     const roomCode = await this.getSocketRoom(socketId);
-     if (!roomCode) return;
-     
-     const room = await this.getRoom(roomCode);
-     if (room) {
+     await this.withRoomLock(socketId, true, async (room) => {
          const sp = await this.getPlayerBySocket(room, socketId);
          if (sp && room.host === sp.id) {
              if (room.game.stage === 'waiting' || room.game.stage === 'showdown') {
-                 await this.finalizeTable(roomCode);
+                 await this.finalizeTableInternal(room);
              } else {
                  room.pendingTableEnd = true;
                  await this.saveRoom(room);
-                 this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
+                 this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
              }
          }
-     }
+     });
   }
 
   async finalizeTable(roomCode) {
-     const room = await this.getRoom(roomCode);
+     await this.withRoomLock(roomCode, false, async (room) => {
+         await this.finalizeTableInternal(room);
+     });
+  }
+
+  async shutdown() {
+      this.isShuttingDown = true;
+      clearInterval(this.timeoutInterval);
+      const shutdownStart = Date.now();
+      while(Date.now() - shutdownStart < 8000) {
+          const keys = await redis.keys("room:*");
+          let hasActiveHands = false;
+          for (const key of keys) {
+              const code = key.split(":")[1];
+              const room = await this.getRoom(code);
+              if (room && room.game && room.game.stage !== "waiting") {
+                  hasActiveHands = true;
+                  break;
+              }
+          }
+          if (!hasActiveHands) break;
+          await new Promise(r => setTimeout(r, 500));
+      }
+      const finalKeys = await redis.keys("room:*");
+      for (const key of finalKeys) {
+          const code = key.split(":")[1];
+          await this.finalizeTable(code);
+      }
+      await prisma.$disconnect();
+      await redis.disconnect();
+  }
+
+  async finalizeTableInternal(room) {
      if (!room) return;
      
      room.game.players.forEach(gp => {
@@ -668,38 +757,47 @@ class RoomManager {
          if (sp) sp.chips = gp.chips;
      });
      
+     // Remove timeouts
+     await redis.zRem('room_turn_timeouts', room.code);
+     if (room.game.handEndTimer) {
+         clearTimeout(room.game.handEndTimer);
+     }
+     
+     const roomCode = room.code;
      const roomState = await this.getRoomState(roomCode);
      const finalBalances = roomState.ledgerBalances;
      
-     // Write to Postgres Ledger
+     // Write to Postgres Ledger using $transaction for ACID compliance
      try {
-         for (let player of room.players) {
-             if (player.totalBuyIn > 0) {
-                 const netProfit = player.chips - player.totalBuyIn;
-                 await prisma.ledgerEntry.create({
-                     data: {
-                         sessionId: room.sessionId,
-                         userId: player.id,
-                         totalBuyIn: player.totalBuyIn,
-                         finalChips: player.chips,
-                         netProfit: netProfit
-                     }
-                 });
-
-                 // Update user's lifetime profit
-                 await prisma.user.update({
-                     where: { id: player.id },
-                     data: { totalProfit: { increment: netProfit } }
-                 });
+         await prisma.$transaction(async (tx) => {
+             for (let player of room.players) {
+                 if (player.totalBuyIn > 0) {
+                     const netProfit = player.chips - player.totalBuyIn;
+                     
+                     await tx.ledgerEntry.create({
+                         data: {
+                             sessionId: room.sessionId,
+                             userId: player.id,
+                             totalBuyIn: player.totalBuyIn,
+                             finalChips: player.chips,
+                             netProfit: netProfit
+                         }
+                     });
+    
+                     await tx.user.update({
+                         where: { id: player.id },
+                         data: { totalProfit: { increment: netProfit } }
+                     });
+                 }
              }
-         }
-
-         await prisma.gameSession.update({
-             where: { id: room.sessionId },
-             data: { status: 'ended', endedAt: new Date() }
+    
+             await tx.gameSession.update({
+                 where: { id: room.sessionId },
+                 data: { status: 'ended', endedAt: new Date() }
+             });
          });
      } catch (err) {
-         console.error('Error finalizing table DB state:', err);
+         console.error(`[FATAL] Error finalizing table DB state for room ${roomCode}:`, err);
      }
          
      this.io.to(roomCode).emit('tableEnded', finalBalances);
