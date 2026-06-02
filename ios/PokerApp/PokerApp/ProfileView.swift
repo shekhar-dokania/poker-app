@@ -4,8 +4,11 @@ struct ProfileView: View {
     @ObservedObject private var authManager = AuthManager.shared
     
     let avatars = [
-        "👽", "🐶", "🐱", "🦊", "🐻", "🐼", "🐯", "🦁", "🐸", "🐵",
-        "🦄", "🐙", "👻", "🤖", "🤡", "🤠", "🎃", "💩", "😎", "🤓"
+        "poker_shark", "poker_cowboy", "poker_hoodie", "poker_king",
+        "poker_tuxedo", "poker_steampunk", "poker_mobster", "poker_flapper",
+        "poker_alien", "poker_wizard", "poker_pirate", "poker_ninja",
+        "poker_robot", "poker_vampire", "poker_astronaut", "poker_knight",
+        "poker_dog"
     ]
     
     let columns = [
@@ -21,11 +24,20 @@ struct ProfileView: View {
                     VStack(spacing: 24) {
                         // Current Profile Section
                         VStack(spacing: 12) {
-                            Text(authManager.avatar)
-                                .font(.system(size: 80))
-                                .padding()
-                                .background(Circle().fill(Color.white.opacity(0.1)))
-                                .shadow(radius: 10)
+                            if UIImage(named: authManager.avatar) != nil {
+                                Image(authManager.avatar)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 80, height: 80)
+                                    .clipShape(Circle())
+                                    .shadow(radius: 10)
+                            } else {
+                                Text(authManager.avatar)
+                                    .font(.system(size: 80))
+                                    .padding()
+                                    .background(Circle().fill(Color.white.opacity(0.1)))
+                                    .shadow(radius: 10)
+                            }
                             
                             Text(authManager.username)
                                 .font(.title)
@@ -48,17 +60,29 @@ struct ProfileView: View {
                                     Button(action: {
                                         authManager.updateAvatar(newAvatar: avatar)
                                     }) {
-                                        Text(avatar)
-                                            .font(.system(size: 40))
-                                            .padding(10)
-                                            .background(
-                                                Circle()
-                                                    .fill(authManager.avatar == avatar ? Color.blue.opacity(0.3) : Color.clear)
-                                            )
-                                            .overlay(
-                                                Circle()
-                                                    .stroke(authManager.avatar == avatar ? Color.blue : Color.clear, lineWidth: 2)
-                                            )
+                                        if UIImage(named: avatar) != nil {
+                                            Image(avatar)
+                                                .resizable()
+                                                .scaledToFill()
+                                                .frame(width: 60, height: 60)
+                                                .clipShape(Circle())
+                                                .overlay(
+                                                    Circle()
+                                                        .stroke(authManager.avatar == avatar ? Color.blue : Color.clear, lineWidth: 3)
+                                                )
+                                        } else {
+                                            Text(avatar)
+                                                .font(.system(size: 40))
+                                                .padding(10)
+                                                .background(
+                                                    Circle()
+                                                        .fill(authManager.avatar == avatar ? Color.blue.opacity(0.3) : Color.clear)
+                                                )
+                                                .overlay(
+                                                    Circle()
+                                                        .stroke(authManager.avatar == avatar ? Color.blue : Color.clear, lineWidth: 2)
+                                                )
+                                        }
                                     }
                                 }
                             }

@@ -1069,27 +1069,34 @@ struct PlayerNodeView: View {
                     
                     Circle()
                         .stroke(Color.gray.opacity(0.3), lineWidth: 4)
-                        .frame(width: 52, height: 52)
+                        .frame(width: 72, height: 72)
                     
                     Circle()
                         .trim(from: 0, to: CGFloat(progress))
                         .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                        .frame(width: 52, height: 52)
+                        .frame(width: 72, height: 72)
                         .rotationEffect(.degrees(-90))
                         .animation(.linear(duration: 0.5), value: progress)
                 }
                 
                 // Avatar image
-                if let avatar = avatar {
+                if let avatar = avatar, UIImage(named: avatar) != nil {
+                    Image(avatar)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 64, height: 64)
+                        .clipShape(Circle())
+                        .opacity(status == "folded" ? 0.5 : 1.0)
+                } else if let avatar = avatar {
                     Text(avatar)
-                        .font(.system(size: 32))
-                        .frame(width: 44, height: 44)
+                        .font(.system(size: 44))
+                        .frame(width: 64, height: 64)
                         .background(Circle().fill(Color.black.opacity(0.6)))
                         .opacity(status == "folded" ? 0.5 : 1.0)
                 } else {
                     Image(systemName: "person.crop.circle.fill")
                         .resizable()
-                        .frame(width: 44, height: 44)
+                        .frame(width: 64, height: 64)
                         .foregroundColor(status == "folded" ? Color.gray : Color.white)
                         .background(Circle().fill(Color.black.opacity(0.6)))
                 }
@@ -1098,7 +1105,7 @@ struct PlayerNodeView: View {
                 if status == "folded" || status == "eliminated" {
                     Circle()
                         .fill(Color.black.opacity(0.4))
-                        .frame(width: 44, height: 44)
+                        .frame(width: 64, height: 64)
                 }
                 
                 // Badges (D, SB, BB)
@@ -1128,7 +1135,7 @@ struct PlayerNodeView: View {
                             .clipShape(Circle())
                     }
                 }
-                .offset(x: 18, y: -20)
+                .offset(x: 24, y: -26)
                 
                 // Status overlay (FOLD, ALL-IN, AWAY, OUT)
                 if status == "eliminated" || status == "sitting_out" || status == "all-in" || status == "folded" {
