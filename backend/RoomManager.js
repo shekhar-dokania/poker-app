@@ -681,10 +681,16 @@ class RoomManager {
          const gpIndex = room.game.players.findIndex(p => p.id === sp.id);
          if (gpIndex !== -1) {
              const gp = room.game.players[gpIndex];
-             
              const minBuyIn = room.settings.minBuyIn || 100;
              const maxBuyIn = room.settings.maxBuyIn || 10000;
-             const finalAmount = Math.max(minBuyIn, Math.min(amount, maxBuyIn));
+             
+             const currentTableChips = gp.chips + (gp.queuedReload || 0) + (gp.potContribution || 0);
+             const maxAllowedToAdd = Math.max(0, maxBuyIn - currentTableChips);
+             
+             if (maxAllowedToAdd <= 0) return; // Cannot reload if already at maxBuyIn
+             
+             const minAllowedToAdd = Math.min(minBuyIn, maxAllowedToAdd);
+             const finalAmount = Math.max(minAllowedToAdd, Math.min(amount, maxAllowedToAdd));
              
              sp.totalBuyIn = (sp.totalBuyIn || 0) + finalAmount;
              

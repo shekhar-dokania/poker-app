@@ -323,58 +323,87 @@ struct TableView: View {
                             Text("Reload Chips")
                                 .font(.headline)
                             VStack(spacing: 12) {
-                                let minBuyInLimit = Double(socketManager.roomSettings?["minBuyIn"] as? Int ?? 100)
                                 let maxBuyInLimit = Double(socketManager.roomSettings?["maxBuyIn"] as? Int ?? 10000)
-                                let safeMax = max(minBuyInLimit, maxBuyInLimit)
-                                let safeAmount = min(max(reloadAmount, minBuyInLimit), safeMax)
+                                let myGameStatePlayer = (socketManager.gameState?["players"] as? [[String: Any]])?.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })
+                                let myCurrentChips = myGameStatePlayer?["chips"] as? Int ?? 0
+                                let myPotContribution = myGameStatePlayer?["potContribution"] as? Int ?? 0
+                                let myQueuedReload = myGameStatePlayer?["queuedReload"] as? Int ?? 0
+                                let myTotalCurrentChips = myCurrentChips + myPotContribution + myQueuedReload
                                 
-                                HStack(spacing: 8) {
-                                    Button("Min") { reloadAmount = minBuyInLimit }
-                                        .buttonStyle(ShortcutButtonStyle())
-                                    Button("Half") { reloadAmount = min(safeMax, max(minBuyInLimit, safeMax / 2)) }
-                                        .buttonStyle(ShortcutButtonStyle())
-                                    Button("Max") { reloadAmount = safeMax }
-                                        .buttonStyle(ShortcutButtonStyle())
-                                }
+                                let maxReloadAllowed = max(0.0, maxBuyInLimit - Double(myTotalCurrentChips))
                                 
-                                HStack {
-                                    Text("Chips:")
-                                        .bold()
-                                        .frame(width: 60, alignment: .leading)
+                                if maxReloadAllowed <= 0 {
+                                    Text("You are already at or above the maximum buy-in limit.")
+                                        .font(.subheadline)
+                                        .foregroundColor(.orange)
+                                        .multilineTextAlignment(.center)
+                                        .padding(.horizontal)
+                                    Button("Close") { showReloadPanel = false }
+                                        .padding(.vertical, 10)
+                                        .frame(maxWidth: .infinity)
+                                        .background(Color.gray)
+                                        .foregroundColor(.white)
+                                        .cornerRadius(8)
+                                        .padding(.horizontal)
+                                } else {
+                                    let minBuyInLimit = min(Double(socketManager.roomSettings?["minBuyIn"] as? Int ?? 100), maxReloadAllowed)
+                                    let safeAmount = min(max(reloadAmount, minBuyInLimit), maxReloadAllowed)
                                     
-                                    TextField("Amount", value: $reloadAmount, formatter: NumberFormatter())
-                                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                                        .keyboardType(.numberPad)
-                                        .frame(width: 80)
+                                    HStack(spacing: 8) {
+                                        Button("Min") { reloadAmount = minBuyInLimit }
+                                            .buttonStyle(ShortcutButtonStyle())
+                                        Button("Half") { reloadAmount = min(maxReloadAllowed, max(minBuyInLimit, maxReloadAllowed / 2)) }
+                                            .buttonStyle(ShortcutButtonStyle())
+                                        Button("Max") { reloadAmount = maxReloadAllowed }
+                                            .buttonStyle(ShortcutButtonStyle())
+                                    }
                                     
-                                    Slider(value: Binding(
-                                        get: { safeAmount },
-                                        set: { reloadAmount = $0 }
-                                    ), in: minBuyInLimit...safeMax, step: 1)
-                                        .accentColor(.green)
+                                    HStack {
+                                        Text("Chips:")
+                                            .bold()
+                                            .frame(width: 60, alignment: .leading)
+                                        
+                                        TextField("Amount", value: $reloadAmount, formatter: NumberFormatter())
+                                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                                            .keyboardType(.numberPad)
+                                            .frame(width: 80)
+                                        
+                                        Slider(value: Binding(
+                                            get: { safeAmount },
+                                            set: { reloadAmount = $0 }
+                                        ), in: minBuyInLimit...maxReloadAllowed, step: 1)
+                                            .accentColor(.green)
+                                    }
                                 }
                             }
                             .padding(.horizontal)
-                            HStack(spacing: 16) {
-                                Button("Cancel") { showReloadPanel = false }
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 10)
-                                    .background(Color.gray)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(8)
+                            if (max(0.0, Double(socketManager.roomSettings?["maxBuyIn"] as? Int ?? 10000) - Double((socketManager.gameState?["players"] as? [[String: Any]])?.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })?["chips"] as? Int ?? 0) - Double((socketManager.gameState?["players"] as? [[String: Any]])?.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })?["potContribution"] as? Int ?? 0) - Double((socketManager.gameState?["players"] as? [[String: Any]])?.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })?["queuedReload"] as? Int ?? 0)) > 0) {
+                                HStack(spacing: 16) {
+                                    Button("Cancel") { showReloadPanel = false }
+                                        .padding(.horizontal, 20)
+                                        .padding(.vertical, 10)
+                                        .background(Color.gray)
+                                        .foregroundColor(.white)
+                                        .cornerRadius(8)
                                     Button("Confirm") {
-                                    let minBuyInLimit = Double(socketManager.roomSettings?["minBuyIn"] as? Int ?? 100)
-                                    let maxBuyInLimit = Double(socketManager.roomSettings?["maxBuyIn"] as? Int ?? 10000)
-                                    let safeMax = max(minBuyInLimit, maxBuyInLimit)
-                                    let safeAmount = min(max(reloadAmount, minBuyInLimit), safeMax)
-                                    socketManager.reloadChips(amount: Int(safeAmount))
-                                    showReloadPanel = false
+                                        let maxBuyInLimit = Double(socketManager.roomSettings?["maxBuyIn"] as? Int ?? 10000)
+                                        let myGameStatePlayer = (socketManager.gameState?["players"] as? [[String: Any]])?.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })
+                                        let myCurrentChips = myGameStatePlayer?["chips"] as? Int ?? 0
+                                        let myPotContribution = myGameStatePlayer?["potContribution"] as? Int ?? 0
+                                        let myQueuedReload = myGameStatePlayer?["queuedReload"] as? Int ?? 0
+                                        let myTotalCurrentChips = myCurrentChips + myPotContribution + myQueuedReload
+                                        let maxReloadAllowed = max(0.0, maxBuyInLimit - Double(myTotalCurrentChips))
+                                        let minBuyInLimit = min(Double(socketManager.roomSettings?["minBuyIn"] as? Int ?? 100), maxReloadAllowed)
+                                        let safeAmount = min(max(reloadAmount, minBuyInLimit), maxReloadAllowed)
+                                        socketManager.reloadChips(amount: Int(safeAmount))
+                                        showReloadPanel = false
+                                    }
+                                        .padding(.horizontal, 20)
+                                        .padding(.vertical, 10)
+                                        .background(Color.blue)
+                                        .foregroundColor(.white)
+                                        .cornerRadius(8)
                                 }
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 10)
-                                    .background(Color.blue)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(8)
                             }
                         }
                     } else {
