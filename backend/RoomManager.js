@@ -621,6 +621,7 @@ class RoomManager {
          room.game.addPlayer({
              id: spectator.id,
              name: spectator.name,
+             avatar: spectator.avatar,
              chips: finalChips
          });
          
