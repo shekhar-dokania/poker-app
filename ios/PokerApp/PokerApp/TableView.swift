@@ -373,12 +373,7 @@ struct TableView: View {
                     let highestBet = socketManager.gameState?["currentHighestBet"] as? Int ?? 0
                     let minRaiseServer = socketManager.gameState?["currentMinRaise"] as? Int ?? 2
                     let gameType = socketManager.gameState?["gameType"] as? String ?? "holdem"
-                    let basePot = socketManager.gameState?["pot"] as? Int ?? 0
-                    let players = socketManager.gameState?["players"] as? [[String: Any]] ?? []
-                    let totalActiveBets = players.reduce(0) { sum, p in
-                        sum + (p["currentBet"] as? Int ?? 0)
-                    }
-                    let totalPot = basePot + totalActiveBets
+                    let totalPot = socketManager.gameState?["pot"] as? Int ?? 0
                     
                     let canCheck = myBet == highestBet
                     let canCall = myBet < highestBet

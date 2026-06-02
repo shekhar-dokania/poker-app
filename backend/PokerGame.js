@@ -291,12 +291,9 @@ class PokerGame {
                 this.ritVotes = {};
                 this.turnStartTime = Date.now();
                 if (this.turnTimer) clearTimeout(this.turnTimer);
-                // Timer is handled by RoomManager or we can just rely on RoomManager calling handleTimeout?
-                // Wait, if we change stage, RoomManager's handleTimeout might not know about runItTwicePrompt. Let's just let it be handled manually by RoomManager or handleTimeout.
             } else {
-                while (this.stage !== 'handEnd') {
-                   this.advanceStage();
-                }
+                this.isAllInShowdown = true;
+                this.advanceStage();
             }
         } else {
             this.advanceStage();
@@ -344,6 +341,10 @@ class PokerGame {
       this.stage = 'handEnd';
       this.turnStartTime = Date.now();
       this.evaluateWinners();
+    }
+
+    if (this.isAllInShowdown && this.stage !== 'handEnd') {
+        this.turnStartTime = Date.now();
     }
   }
 
@@ -444,9 +445,8 @@ class PokerGame {
       else if (cards === 4) this.stage = 'turn';
       else this.stage = 'river';
 
-      while (this.stage !== 'handEnd') {
-          this.advanceStage();
-      }
+      this.isAllInShowdown = true;
+      this.advanceStage();
   }
 
   voteRunItTwice(playerIndex, vote) {
@@ -562,7 +562,8 @@ class PokerGame {
       winnerInfo: this.winnerInfo,
       runItTwiceData: this.runItTwiceData,
       ritVotes: this.ritVotes,
-      handCount: this.handCount
+      handCount: this.handCount,
+      isAllInShowdown: this.isAllInShowdown
     };
   }
 
@@ -585,6 +586,7 @@ class PokerGame {
     game.runItTwiceData = data.runItTwiceData || null;
     game.ritVotes = data.ritVotes || {};
     game.handCount = data.handCount || 0;
+    game.isAllInShowdown = data.isAllInShowdown || false;
     return game;
   }
 }

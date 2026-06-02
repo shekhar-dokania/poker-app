@@ -17,14 +17,12 @@ class RoomManager {
   }
 
   async updateTurnTimer(room) {
-      if (room.game.stage === 'waiting') {
-          await redis.zRem('room_turn_timeouts', room.code);
-      } else {
-          // If stage is handEnd, force a 10s delay. Otherwise use standard turn limits
-          const limit = room.game.stage === 'handEnd' ? 10 : (room.game.settings.turnTimeLimit || 30);
-          const expireTime = room.game.turnStartTime + (limit * 1000);
-          await redis.zAdd('room_turn_timeouts', [{ score: expireTime, value: room.code }]);
-      }
+      if (room.game.stage === 'waiting') return;
+      let limit = room.game.settings.turnTimeLimit || 30;
+      if (room.game.stage === 'handEnd') limit = 10;
+      if (room.game.isAllInShowdown) limit = 2;
+      const expireTime = room.game.turnStartTime + (limit * 1000);
+      await redis.zAdd('room_turn_timeouts', [{ score: expireTime, value: room.code }]);
   }
 
   async processTimeouts() {
@@ -33,13 +31,30 @@ class RoomManager {
       for (const roomCode of expiredRooms) {
           const room = await this.getRoom(roomCode);
           if (room && room.game && room.game.stage !== 'waiting') {
-              const limit = room.game.stage === 'handEnd' ? 10 : (room.game.settings.turnTimeLimit || 30);
+              let limit = room.game.settings.turnTimeLimit || 30;
+              if (room.game.stage === 'handEnd') limit = 10;
+              if (room.game.isAllInShowdown) limit = 2; // 2 seconds delay between cards
+              
               const expireTime = room.game.turnStartTime + (limit * 1000);
               
               if (now >= expireTime) {
                   if (room.game.stage === 'handEnd') {
                       console.log(`Starting next hand in room ${room.code} after handEnd delay`);
                       await this.startNextHand(roomCode);
+                  } else if (room.game.isAllInShowdown) {
+                      console.log(`Advancing all-in showdown stage in room ${room.code}`);
+                      room.game.advanceStage();
+                      if (room.game.stage === 'handEnd') {
+                          room.game.isAllInShowdown = false;
+                          const history = await prisma.handHistory.create({
+                              data: { sessionId: room.sessionId, handData: room.game.toJSON() }
+                          });
+                          room.currentHandHistoryId = history.id;
+                      }
+                      await this.saveRoom(room);
+                      this.io.to(roomCode).emit('gameState', room.game.getGameState());
+                      this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
+                      await this.updateTurnTimer(room);
                   } else if (room.game.stage === 'runItTwicePrompt') {
                       console.log(`Auto-declining RIT in room ${room.code} due to timeout`);
                       room.game.declineRunItTwice();
