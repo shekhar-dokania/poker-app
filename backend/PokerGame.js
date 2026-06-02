@@ -404,12 +404,14 @@ class PokerGame {
         }
 
         let sidePot = 0;
+        let contributorsCount = 0;
         this.players.forEach(p => {
             if (p.potContribution > 0) {
                 const deduction = Math.min(p.potContribution, smallestCap);
                 p.potContribution -= deduction;
                 sidePot += deduction;
                 remainingPot -= deduction;
+                contributorsCount++;
             }
         });
 
@@ -427,8 +429,10 @@ class PokerGame {
         winners.forEach(w => {
             w.player.chips += splitAmount;
             w.player.revealedHand = w.player.hand;
-            if (!overallWinners.includes(w.player.name)) {
-                overallWinners.push(w.player.name);
+            if (contributorsCount > 1) {
+                if (!overallWinners.includes(w.player.name)) {
+                    overallWinners.push(w.player.name);
+                }
             }
         });
 
@@ -533,6 +537,7 @@ class PokerGame {
               this.runItTwiceData.board2.winners = this.winnerInfo;
               this.communityCards = tempComm;
               
+              this.pot = this.ritOriginalPot;
               this.stage = 'handEnd';
               this.isRitShowdown = false;
           }
