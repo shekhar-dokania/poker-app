@@ -291,6 +291,8 @@ class PokerGame {
     const allActed = activePlayers.every(p => p.hasActed);
     
     if (allMatched && allActed) {
+        this.returnUnmatchedBets();
+        
         // Check if betting is effectively over for the hand (fast-forward to handEnd or RIT)
         if (activePlayers.length <= 1 && allInPlayers.length > 0) {
             if (this.communityCards.length < 5) {
@@ -313,6 +315,22 @@ class PokerGame {
       this.currentTurn = (this.currentTurn + 1) % this.players.length;
     } while (this.players[this.currentTurn].status !== 'active');
     this.turnStartTime = Date.now();
+  }
+  returnUnmatchedBets() {
+      const playersInHand = this.players.filter(p => p.status === 'active' || p.status === 'all-in');
+      if (playersInHand.length < 2) return;
+
+      const sortedByContrib = [...playersInHand].sort((a, b) => b.potContribution - a.potContribution);
+      
+      const highestContrib = sortedByContrib[0].potContribution;
+      const secondHighestContrib = sortedByContrib[1].potContribution;
+
+      if (highestContrib > secondHighestContrib) {
+          const refundAmount = highestContrib - secondHighestContrib;
+          sortedByContrib[0].potContribution -= refundAmount;
+          sortedByContrib[0].chips += refundAmount;
+          this.pot -= refundAmount;
+      }
   }
 
   advanceStage() {
