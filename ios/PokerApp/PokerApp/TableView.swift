@@ -122,7 +122,11 @@ struct TableView: View {
                         VStack(spacing: 8) {
                             HStack {
                                 Image(systemName: "banknote.fill").foregroundColor(.yellow)
-                                Text("Pot: \(socketManager.gameState?["pot"] as? Int ?? 0)")
+                                let currentPot = socketManager.gameState?["pot"] as? Int ?? 0
+                                let ritOriginalPot = socketManager.gameState?["ritOriginalPot"] as? Int ?? 0
+                                let isRitShowdown = socketManager.gameState?["isRitShowdown"] as? Bool ?? false
+                                let displayPot = (isRitShowdown && ritOriginalPot > 0) ? ritOriginalPot : currentPot
+                                Text("Pot: \(displayPot)")
                                     .foregroundColor(.white)
                                     .font(.subheadline)
                                     .bold()
@@ -196,7 +200,7 @@ struct TableView: View {
                         let myIndex = players.firstIndex(where: { ($0["name"] as? String) == socketManager.localPlayerName }) ?? 0
                         
                         ForEach(Array(players.enumerated()), id: \.offset) { index, player in
-                            let isTurn = index == currentTurn
+                            let isTurn = (index == currentTurn) && (socketManager.gameState?["stage"] as? String != "runItTwicePrompt") && (socketManager.gameState?["stage"] as? String != "handEnd") && (socketManager.gameState?["isAllInShowdown"] as? Bool != true) && (socketManager.gameState?["isRitShowdown"] as? Bool != true)
                             let isMe = index == myIndex
                             let name = player["name"] as? String ?? "Unknown"
                             let chips = player["chips"] as? Int ?? 0
@@ -907,12 +911,12 @@ struct TableView: View {
                     Text("Run It Twice?").font(.title).foregroundColor(.white).bold()
                     
                     let turnStartTimeSec = (socketManager.gameState?["turnStartTime"] as? Double ?? 0) / 1000.0
-                    let turnTimeLimitSec = Double((socketManager.roomState?["settings"] as? [String: Any])?["turnTimeLimit"] as? Int ?? 30)
+                    let turnTimeLimitSec = 10.0 // Hardcoded to 10s to match backend RIT logic
                     let timeRemaining = max(0, turnTimeLimitSec - (currentTime - turnStartTimeSec))
                     
                     if turnStartTimeSec > 0 {
                         ProgressView(value: timeRemaining, total: turnTimeLimitSec)
-                            .progressViewStyle(LinearProgressViewStyle(tint: timeRemaining < 10 ? .red : .green))
+                            .progressViewStyle(LinearProgressViewStyle(tint: timeRemaining < 3 ? .red : .green))
                             .padding(.horizontal, 20)
                     }
                     

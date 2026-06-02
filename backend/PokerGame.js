@@ -529,7 +529,6 @@ class PokerGame {
               this.runItTwiceData.board1.communityCards.push(...this.deck.deal(cardsToDeal));
           } else {
               // Board 1 complete, evaluate winners
-              this.pot = Math.ceil(this.ritOriginalPot / 2);
               this.players.forEach((p, i) => {
                   p.potContribution = Math.ceil(this.ritOriginalContributions[i] / 2);
               });
@@ -547,7 +546,6 @@ class PokerGame {
               this.runItTwiceData.board2.communityCards.push(...this.deck.deal(cardsToDeal));
           } else {
               // Board 2 complete
-              this.pot = Math.floor(this.ritOriginalPot / 2);
               this.players.forEach((p, i) => {
                   p.potContribution = Math.floor(this.ritOriginalContributions[i] / 2);
               });
@@ -570,16 +568,20 @@ class PokerGame {
       stage: this.stage,
       communityCards: this.communityCards,
       pot: this.pot,
-      currentTurn: this.currentTurn,
+      currentTurn: (this.isAllInShowdown || this.isRitShowdown || this.stage === 'runItTwicePrompt' || this.stage === 'handEnd') ? -1 : this.currentTurn,
       currentHighestBet: this.currentHighestBet,
       currentMinRaise: this.currentMinRaise,
       gameType: this.gameType,
       turnStartTime: this.turnStartTime,
-      turnTimeLimit: this.settings.turnTimeLimit,
+      turnTimeLimit: this.stage === 'runItTwicePrompt' ? 10 : this.settings.turnTimeLimit,
       winnerInfo: this.winnerInfo,
       runItTwiceData: this.runItTwiceData,
       ritVotes: this.ritVotes,
       handCount: this.handCount,
+      isAllInShowdown: this.isAllInShowdown,
+      isRitShowdown: this.isRitShowdown,
+      ritOriginalPot: this.ritOriginalPot,
+      ritStage: this.ritStage,
       players: this.players.map((p, i) => ({
          id: p.id,
          name: p.name,
@@ -599,7 +601,10 @@ class PokerGame {
   toJSON() {
     return {
       gameType: this.gameType,
-      settings: this.settings,
+      settings: {
+          ...this.settings,
+          turnTimeLimit: this.stage === 'runItTwicePrompt' ? 10 : this.settings.turnTimeLimit
+      },
       players: this.players.map(p => {
           // Remove solvedHand to prevent circular JSON issues
           const { solvedHand, ...rest } = p;
@@ -608,7 +613,7 @@ class PokerGame {
       deck: this.deck.toJSON(),
       communityCards: this.communityCards,
       pot: this.pot,
-      currentTurn: this.currentTurn,
+      currentTurn: (this.isAllInShowdown || this.isRitShowdown || this.stage === 'runItTwicePrompt' || this.stage === 'handEnd') ? -1 : this.currentTurn,
       dealerIndex: this.dealerIndex,
       sbIndex: this.sbIndex,
       bbIndex: this.bbIndex,
