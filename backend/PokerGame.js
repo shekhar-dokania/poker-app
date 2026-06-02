@@ -268,12 +268,13 @@ class PokerGame {
   advanceTurn() {
     const activePlayers = this.players.filter(p => p.status === 'active');
     const allInPlayers = this.players.filter(p => p.status === 'all-in');
+    const playersInHand = this.players.filter(p => p.status === 'active' || p.status === 'all-in');
     
-    // Check if only 1 player left (everyone else folded)
-    if (activePlayers.length === 1 && allInPlayers.length === 0) {
+    // Check if only 1 player left (everyone else folded or disconnected)
+    if (playersInHand.length === 1) {
        this.stage = 'handEnd';
-       this.winnerInfo = { winners: [activePlayers[0].name], description: "Default winner (others folded)" };
-       activePlayers[0].chips += this.pot;
+       this.winnerInfo = { winners: [playersInHand[0].name], description: "Default winner (others folded or disconnected)" };
+       playersInHand[0].chips += this.pot;
        this.turnStartTime = Date.now();
        return;
     }

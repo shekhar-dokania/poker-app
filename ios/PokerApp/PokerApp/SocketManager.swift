@@ -62,8 +62,8 @@ class PokerSocketManager: ObservableObject {
             self?.fetchMyClubs()
             
             // Rejoin current room if recovering from a background/disconnect state
-            if let currentRoom = self?.currentRoom {
-                self?.socket.emit("joinRoom", currentRoom)
+            if let currentRoom = self?.currentRoom, let localPlayerName = self?.localPlayerName {
+                self?.joinRoom(roomCode: currentRoom, playerName: localPlayerName)
             }
         }
         
