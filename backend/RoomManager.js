@@ -478,7 +478,7 @@ class RoomManager {
           const sp = room.players.find(p => p.id === gp.id);
           if (sp) {
               sp.cashedOutChips = (sp.cashedOutChips || 0) + gp.chips;
-              sp.chips = gp.chips;
+              sp.chips = 0;
           }
       });
       
@@ -511,7 +511,7 @@ class RoomManager {
             const sp = room.players.find(p => p.id === gp.id);
             if (sp) {
                 sp.cashedOutChips = (sp.cashedOutChips || 0) + gp.chips;
-                sp.chips = gp.chips;
+                sp.chips = 0;
             }
         });
 
@@ -570,12 +570,13 @@ class RoomManager {
           .filter(p => p.totalBuyIn && p.totalBuyIn > 0)
           .map(p => {
               const gp = room.game.players.find(gameP => gameP.id === p.id);
-              const currentChips = gp ? gp.chips + (gp.queuedReload || 0) + (gp.potContribution || 0) : p.chips;
+              const tableChips = gp ? gp.chips + (gp.queuedReload || 0) + (gp.potContribution || 0) : p.chips;
+              const totalAssetValue = tableChips + (p.cashedOutChips || 0);
               return {
                   name: p.name,
                   totalBuyIn: p.totalBuyIn,
-                  chips: currentChips,
-                  net: currentChips + (p.cashedOutChips || 0) - p.totalBuyIn
+                  chips: totalAssetValue,
+                  net: totalAssetValue - p.totalBuyIn
               };
           })
     };
@@ -643,7 +644,7 @@ class RoomManager {
              const gp = room.game.players[gpIndex];
              if (room.game.stage === 'waiting' || room.game.stage === 'handEnd') {
                  sp.cashedOutChips = (sp.cashedOutChips || 0) + gp.chips;
-                 sp.chips = gp.chips;
+                 sp.chips = 0;
                  room.game.players.splice(gpIndex, 1);
              } else {
                  gp.isStandingUp = true;
