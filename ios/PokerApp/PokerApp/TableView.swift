@@ -836,6 +836,16 @@ struct TableView: View {
                 VStack(spacing: 20) {
                     Text("Run It Twice?").font(.title).foregroundColor(.white).bold()
                     
+                    let turnStartTimeSec = (socketManager.gameState?["turnStartTime"] as? Double ?? 0) / 1000.0
+                    let turnTimeLimitSec = Double((socketManager.roomState?["settings"] as? [String: Any])?["turnTimeLimit"] as? Int ?? 30)
+                    let timeRemaining = max(0, turnTimeLimitSec - (currentTime - turnStartTimeSec))
+                    
+                    if turnStartTimeSec > 0 {
+                        ProgressView(value: timeRemaining, total: turnTimeLimitSec)
+                            .progressViewStyle(LinearProgressViewStyle(tint: timeRemaining < 10 ? .red : .green))
+                            .padding(.horizontal, 20)
+                    }
+                    
                     let players = socketManager.gameState?["players"] as? [[String: Any]] ?? []
                     let me = players.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })
                     let status = me?["status"] as? String ?? ""
