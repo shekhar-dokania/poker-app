@@ -741,6 +741,9 @@ struct TableView: View {
                                                 }
                                                 if let w1 = b1["winners"] as? [String: Any], let win1 = w1["winners"] as? [String] {
                                                     Text("Winners: \(win1.joined(separator: ", "))").font(.caption).foregroundColor(.white)
+                                                    if let desc1 = w1["description"] as? String {
+                                                        Text(desc1).font(.caption2).foregroundColor(.white.opacity(0.8))
+                                                    }
                                                 }
                                                 
                                                 Text("Run It Twice - Board 2:").font(.caption).foregroundColor(.yellow).padding(.top, 4)
@@ -749,6 +752,9 @@ struct TableView: View {
                                                 }
                                                 if let w2 = b2["winners"] as? [String: Any], let win2 = w2["winners"] as? [String] {
                                                     Text("Winners: \(win2.joined(separator: ", "))").font(.caption).foregroundColor(.white)
+                                                    if let desc2 = w2["description"] as? String {
+                                                        Text(desc2).font(.caption2).foregroundColor(.white.opacity(0.8))
+                                                    }
                                                 }
                                             }
                                         } else {
@@ -866,6 +872,7 @@ struct TableView: View {
                 .background(Color.black.opacity(0.85))
                 .cornerRadius(16)
                 .shadow(radius: 10)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
         } // End of outer ZStack
         .navigationBarHidden(true)

@@ -95,6 +95,10 @@ class PokerGame {
     this.players.forEach(p => {
        p.hand = [];
        p.revealedHand = [];
+       p.currentBet = 0;
+       p.potContribution = 0;
+       p.hasActed = false;
+       
        if (p.chips > 0 && p.status === 'eliminated') {
            p.status = 'waiting';
        }
@@ -104,6 +108,13 @@ class PokerGame {
            p.status = 'sitting_out';
        }
     });
+    
+    this.communityCards = [];
+    this.pot = 0;
+    this.currentHighestBet = 0;
+    this.winnerInfo = null;
+    this.runItTwiceData = null;
+    this.ritVotes = {};
 
     const activePlayers = this.players.filter(p => p.status !== 'disconnected' && p.status !== 'eliminated' && !p.isSittingOut);
     if (activePlayers.length < 2) return false;
@@ -111,20 +122,11 @@ class PokerGame {
     this.players.forEach(p => {
       if (p.status !== 'disconnected' && p.status !== 'eliminated' && !p.isSittingOut) {
         p.status = 'active';
-        p.currentBet = 0;
-        p.potContribution = 0;
-        p.hasActed = false;
       }
     });
 
     this.deck.reset();
-    this.communityCards = [];
-    this.pot = 0;
-    this.currentHighestBet = 0;
     this.currentMinRaise = this.settings.bigBlind;
-    this.winnerInfo = null;
-    this.runItTwiceData = null;
-    this.ritVotes = {};
     this.handCount++;
     this.stage = 'preflop';
     

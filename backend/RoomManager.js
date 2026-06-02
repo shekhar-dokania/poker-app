@@ -40,6 +40,23 @@ class RoomManager {
                   if (room.game.stage === 'handEnd') {
                       console.log(`Starting next hand in room ${room.code} after handEnd delay`);
                       await this.startNextHand(roomCode);
+                  } else if (room.game.stage === 'runItTwicePrompt') {
+                      console.log(`Auto-declining RIT in room ${room.code} due to timeout`);
+                      room.game.declineRunItTwice();
+                      await this.saveRoom(room);
+                      this.io.to(roomCode).emit('gameState', room.game.getGameState());
+                      this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
+                      
+                      if (room.game.stage === 'handEnd') {
+                          const history = await prisma.handHistory.create({
+                              data: {
+                                  sessionId: room.sessionId,
+                                  handData: room.game.toJSON()
+                              }
+                          });
+                          room.currentHandHistoryId = history.id;
+                          await this.saveRoom(room);
+                      }
                   } else {
                       const player = room.game.players[room.game.currentTurn];
                       if (player && player.status === 'active') {
