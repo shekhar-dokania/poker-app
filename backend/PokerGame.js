@@ -585,6 +585,7 @@ class PokerGame {
       players: this.players.map((p, i) => ({
          id: p.id,
          name: p.name,
+         avatar: p.avatar,
          chips: p.chips,
          currentBet: p.currentBet,
          status: p.status,

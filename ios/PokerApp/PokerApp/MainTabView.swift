@@ -17,6 +17,11 @@ struct MainTabView: View {
                     .tabItem {
                         Label("My Clubs", systemImage: "person.3.fill")
                     }
+                
+                ProfileView()
+                    .tabItem {
+                        Label("Profile", systemImage: "person.crop.circle")
+                    }
             }
         }
     }

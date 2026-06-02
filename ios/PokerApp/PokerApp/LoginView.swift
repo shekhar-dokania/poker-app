@@ -179,7 +179,8 @@ struct LoginView: View {
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     if let success = json["success"] as? Bool, success, let token = json["token"] as? String {
                         self.storedUsername = username
-                        AuthManager.shared.login(token: token)
+                        let user = json["user"] as? [String: Any]
+                        AuthManager.shared.login(token: token, user: user)
                     } else if let err = json["error"] as? String {
                         self.errorMessage = err
                     } else {
@@ -235,10 +236,11 @@ struct LoginView: View {
                         
                         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                             if let success = json["success"] as? Bool, success, let token = json["token"] as? String {
-                                if let user = json["user"] as? [String: Any], let uname = user["username"] as? String {
+                                let user = json["user"] as? [String: Any]
+                                if let uname = user?["username"] as? String {
                                     self.storedUsername = uname
                                 }
-                                AuthManager.shared.login(token: token)
+                                AuthManager.shared.login(token: token, user: user)
                             } else if let err = json["error"] as? String {
                                 self.errorMessage = err
                             } else {

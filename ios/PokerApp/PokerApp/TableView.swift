@@ -229,9 +229,10 @@ struct TableView: View {
                             let turnStartTimeSec = (socketManager.gameState?["turnStartTime"] as? Double ?? 0) / 1000.0
                             let turnTimeLimitSec = socketManager.gameState?["turnTimeLimit"] as? Double ?? 30.0
                             let revealedHand = player["revealedHand"] as? [String]
+                            let avatar = player["avatar"] as? String
 
                             // Draw Player
-                            PlayerNodeView(name: name, chips: chips, status: status, isTurn: isTurn, isMe: isMe, isDealer: isDealer, isSB: isSB, isBB: isBB, turnStartTime: turnStartTimeSec, turnTimeLimit: turnTimeLimitSec, currentTime: currentTime, revealedHand: revealedHand)
+                            PlayerNodeView(name: name, avatar: avatar, chips: chips, status: status, isTurn: isTurn, isMe: isMe, isDealer: isDealer, isSB: isSB, isBB: isBB, turnStartTime: turnStartTimeSec, turnTimeLimit: turnTimeLimitSec, currentTime: currentTime, revealedHand: revealedHand)
                                 .position(x: px, y: py)
                         }
                     }
@@ -1044,6 +1045,7 @@ struct TableView: View {
 
 struct PlayerNodeView: View {
     let name: String
+    let avatar: String?
     let chips: Int
     let status: String
     let isTurn: Bool
@@ -1078,11 +1080,19 @@ struct PlayerNodeView: View {
                 }
                 
                 // Avatar image
-                Image(systemName: "person.crop.circle.fill")
-                    .resizable()
-                    .frame(width: 44, height: 44)
-                    .foregroundColor(status == "folded" ? Color.gray : Color.white)
-                    .background(Circle().fill(Color.black.opacity(0.6)))
+                if let avatar = avatar {
+                    Text(avatar)
+                        .font(.system(size: 32))
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(Color.black.opacity(0.6)))
+                        .opacity(status == "folded" ? 0.5 : 1.0)
+                } else {
+                    Image(systemName: "person.crop.circle.fill")
+                        .resizable()
+                        .frame(width: 44, height: 44)
+                        .foregroundColor(status == "folded" ? Color.gray : Color.white)
+                        .background(Circle().fill(Color.black.opacity(0.6)))
+                }
                 
                 // Dim overlay for folded/eliminated
                 if status == "folded" || status == "eliminated" {

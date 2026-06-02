@@ -298,11 +298,15 @@ class RoomManager {
             }
         }
 
+        const dbUser = await prisma.user.findUnique({ where: { id: user.userId } });
+        const avatar = dbUser ? dbUser.avatar : '👽';
+
         let player = room.players.find(p => p.id === user.userId);
         if (!player) {
             player = {
               id: user.userId,
               name: user.username,
+              avatar: avatar,
               socketId: socket.id,
               chips: 0,
               totalBuyIn: 0,
@@ -310,6 +314,7 @@ class RoomManager {
             };
             room.players.push(player);
         } else {
+            player.avatar = avatar; // Update in case it changed
             player.connected = true;
             player.socketId = socket.id;
         }

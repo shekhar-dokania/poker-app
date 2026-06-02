@@ -25,6 +25,47 @@ const isValidPassword = (password) => {
     return regex.test(password);
 };
 
+// Auth Middleware
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'Unauthorized' });
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.status(403).json({ error: 'Forbidden' });
+        req.user = user;
+        next();
+    });
+};
+
+// Me Endpoint
+router.get('/me', authenticateToken, async (req, res) => {
+    try {
+        const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        res.json({ success: true, user: { id: user.id, username: user.username, avatar: user.avatar } });
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Avatar Update Endpoint
+router.post('/avatar', authenticateToken, async (req, res) => {
+    try {
+        const { avatar } = req.body;
+        if (!avatar) return res.status(400).json({ error: 'Avatar is required' });
+        
+        const updatedUser = await prisma.user.update({
+            where: { id: req.user.userId },
+            data: { avatar }
+        });
+        
+        res.json({ success: true, user: { id: updatedUser.id, username: updatedUser.username, avatar: updatedUser.avatar } });
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Register Endpoint
 router.post('/register', authLimiter, async (req, res) => {
     try {
@@ -62,7 +103,7 @@ router.post('/register', authLimiter, async (req, res) => {
         });
 
         const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ success: true, token, user: { id: user.id, username: user.username } });
+        res.json({ success: true, token, user: { id: user.id, username: user.username, avatar: user.avatar } });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -94,7 +135,7 @@ router.post('/login', authLimiter, async (req, res) => {
         }
 
         const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ success: true, token, user: { id: user.id, username: user.username } });
+        res.json({ success: true, token, user: { id: user.id, username: user.username, avatar: user.avatar } });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -230,7 +271,7 @@ router.post('/apple', authLimiter, async (req, res) => {
             }
             
             const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
-            res.json({ success: true, token, user: { id: user.id, username: user.username } });
+            res.json({ success: true, token, user: { id: user.id, username: user.username, avatar: user.avatar } });
         });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
