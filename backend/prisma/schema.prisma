@@ -13,10 +13,14 @@ datasource db {
 }
 
 model User {
-  id           String          @id @default(uuid())
-  username     String          @unique
-  passwordHash String
-  totalProfit  Int             @default(0)
+  id               String          @id @default(uuid())
+  username         String          @unique
+  email            String          @unique
+  passwordHash     String?
+  provider         String          @default("local") // "local", "apple", "google"
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  totalProfit      Int             @default(0)
   sessions     GameSession[]
   ledger       LedgerEntry[]
   ownedClubs   Club[]          @relation("ClubOwner")

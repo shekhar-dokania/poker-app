@@ -2,16 +2,18 @@ import SwiftUI
 
 @main
 struct PokerAppApp: App {
-    @AppStorage("jwt_token") var jwtToken: String = ""
+    @StateObject private var authManager = AuthManager.shared
     
     var body: some Scene {
         WindowGroup {
-            if jwtToken.isEmpty {
+            if !authManager.isAuthenticated {
                 LoginView()
             } else {
                 MainTabView()
                     .onAppear {
-                        PokerSocketManager.shared.connectWithToken(token: jwtToken)
+                        if let token = authManager.jwtToken {
+                            PokerSocketManager.shared.connectWithToken(token: token)
+                        }
                     }
             }
         }

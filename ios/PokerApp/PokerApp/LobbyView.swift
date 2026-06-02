@@ -3,7 +3,6 @@ import SwiftUI
 struct LobbyView: View {
     @ObservedObject private var socketManager = PokerSocketManager.shared
     @AppStorage("username") var storedUsername: String = ""
-    @AppStorage("jwt_token") var jwtToken: String = ""
     @State private var roomCodeToJoin = ""
     @State private var selectedGameType = "holdem"
     @State private var smallBlind: Double = 1
