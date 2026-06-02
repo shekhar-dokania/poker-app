@@ -119,26 +119,30 @@ struct TableView: View {
                         }
                     } else {
                         // Center Info (Pot & Community Cards & Winner)
-                        VStack(spacing: 12) {
-                            Text("Pot: \(socketManager.gameState?["pot"] as? Int ?? 0)")
-                                .foregroundColor(.white)
-                                .font(.headline)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(Color.black.opacity(0.6))
-                                .cornerRadius(20)
+                        VStack(spacing: 8) {
+                            HStack {
+                                Image(systemName: "banknote.fill").foregroundColor(.yellow)
+                                Text("Pot: \(socketManager.gameState?["pot"] as? Int ?? 0)")
+                                    .foregroundColor(.white)
+                                    .font(.subheadline)
+                                    .bold()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                            .background(Color.black.opacity(0.6))
+                            .cornerRadius(12)
                             
                             if let ritData = socketManager.gameState?["runItTwiceData"] as? [String: Any],
                                let b1 = ritData["board1"] as? [String: Any], let c1 = b1["communityCards"] as? [String],
                                let b2 = ritData["board2"] as? [String: Any], let c2 = b2["communityCards"] as? [String] {
-                                VStack(spacing: 8) {
-                                    HStack {
+                                VStack(spacing: 4) {
+                                    HStack(spacing: 4) {
                                         Text("B1").foregroundColor(.white).font(.caption2).bold()
-                                        ForEach(c1, id: \.self) { card in CardView(card: card) }
+                                        ForEach(c1, id: \.self) { card in CardView(card: card, scale: 0.75) }
                                     }
-                                    HStack {
+                                    HStack(spacing: 4) {
                                         Text("B2").foregroundColor(.white).font(.caption2).bold()
-                                        ForEach(c2, id: \.self) { card in CardView(card: card) }
+                                        ForEach(c2, id: \.self) { card in CardView(card: card, scale: 0.75) }
                                     }
                                 }
                             } else {
@@ -153,18 +157,18 @@ struct TableView: View {
                             
                             if socketManager.gameState?["stage"] as? String == "handEnd" || socketManager.gameState?["stage"] as? String == "showdown" {
                                 if let ritData = socketManager.gameState?["runItTwiceData"] as? [String: Any] {
-                                    VStack(spacing: 6) {
-                                        Text("Run It Twice").font(.headline).foregroundColor(.yellow)
+                                    VStack(spacing: 2) {
+                                        Text("Run It Twice").font(.subheadline).foregroundColor(.yellow)
                                         if let b1 = ritData["board1"] as? [String: Any], let w1 = b1["winners"] as? [String: Any], let win1 = w1["winners"] as? [String] {
-                                            Text("B1: \(win1.joined(separator: ", "))").font(.caption).foregroundColor(.white)
+                                            Text("B1: \(win1.joined(separator: ", "))").font(.caption2).foregroundColor(.white)
                                         }
                                         if let b2 = ritData["board2"] as? [String: Any], let w2 = b2["winners"] as? [String: Any], let win2 = w2["winners"] as? [String] {
-                                            Text("B2: \(win2.joined(separator: ", "))").font(.caption).foregroundColor(.white)
+                                            Text("B2: \(win2.joined(separator: ", "))").font(.caption2).foregroundColor(.white)
                                         }
                                     }
-                                    .padding(10)
+                                    .padding(8)
                                     .background(Color.black.opacity(0.8))
-                                    .cornerRadius(12)
+                                    .cornerRadius(8)
                                 } else if let winnerInfo = socketManager.gameState?["winnerInfo"] as? [String: Any],
                                    let winners = winnerInfo["winners"] as? [String] {
                                     VStack(spacing: 6) {
@@ -727,24 +731,46 @@ struct TableView: View {
                                             Spacer()
                                         }
                                         
-                                        if !commCards.isEmpty {
-                                            HStack {
-                                                ForEach(commCards, id: \.self) { card in
-                                                    CardView(card: card)
+                                        if let ritData = hand["runItTwiceData"] as? [String: Any],
+                                           let b1 = ritData["board1"] as? [String: Any], let c1 = b1["communityCards"] as? [String],
+                                           let b2 = ritData["board2"] as? [String: Any], let c2 = b2["communityCards"] as? [String] {
+                                            VStack(alignment: .leading, spacing: 6) {
+                                                Text("Run It Twice - Board 1:").font(.caption).foregroundColor(.yellow)
+                                                HStack {
+                                                    ForEach(c1, id: \.self) { card in CardView(card: card, scale: 0.75) }
+                                                }
+                                                if let w1 = b1["winners"] as? [String: Any], let win1 = w1["winners"] as? [String] {
+                                                    Text("Winners: \(win1.joined(separator: ", "))").font(.caption).foregroundColor(.white)
+                                                }
+                                                
+                                                Text("Run It Twice - Board 2:").font(.caption).foregroundColor(.yellow).padding(.top, 4)
+                                                HStack {
+                                                    ForEach(c2, id: \.self) { card in CardView(card: card, scale: 0.75) }
+                                                }
+                                                if let w2 = b2["winners"] as? [String: Any], let win2 = w2["winners"] as? [String] {
+                                                    Text("Winners: \(win2.joined(separator: ", "))").font(.caption).foregroundColor(.white)
                                                 }
                                             }
-                                        }
-                                        
-                                        if !winners.isEmpty {
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text("Winners: \(winners.joined(separator: ", "))")
-                                                    .font(.subheadline)
-                                                    .foregroundColor(.white)
-                                                Text(desc)
-                                                    .font(.caption)
-                                                    .foregroundColor(.white.opacity(0.8))
+                                        } else {
+                                            if !commCards.isEmpty {
+                                                HStack {
+                                                    ForEach(commCards, id: \.self) { card in
+                                                        CardView(card: card, scale: 0.75)
+                                                    }
+                                                }
                                             }
-                                            .padding(.top, 4)
+                                            
+                                            if !winners.isEmpty {
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text("Winners: \(winners.joined(separator: ", "))")
+                                                        .font(.subheadline)
+                                                        .foregroundColor(.white)
+                                                    Text(desc)
+                                                        .font(.caption)
+                                                        .foregroundColor(.white.opacity(0.8))
+                                                }
+                                                .padding(.top, 4)
+                                            }
                                         }
                                         
                                         let players = hand["players"] as? [[String: Any]] ?? []
@@ -1073,6 +1099,7 @@ struct BetNodeView: View {
 
 struct CardView: View {
     let card: String
+    var scale: CGFloat = 1.0
     
     var rank: String {
         return String(card.prefix(1))
@@ -1088,14 +1115,14 @@ struct CardView: View {
     
     var body: some View {
         Text("\(rank)\(suitSymbol)")
-            .font(.title2)
+            .font(scale < 1.0 ? .caption : .title2)
             .fontWeight(.semibold)
-            .frame(width: 45, height: 65)
+            .frame(width: 45 * scale, height: 65 * scale)
             .background(Color.white)
             .foregroundColor(card.contains("h") || card.contains("d") ? .red : .black)
-            .cornerRadius(6)
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.black, lineWidth: 1))
-            .shadow(radius: 2)
+            .cornerRadius(6 * scale)
+            .overlay(RoundedRectangle(cornerRadius: 6 * scale).stroke(Color.black, lineWidth: 1))
+            .shadow(radius: 2 * scale)
     }
 }
 

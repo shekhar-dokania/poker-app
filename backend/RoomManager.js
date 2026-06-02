@@ -276,7 +276,19 @@ class RoomManager {
          const playerIndex = room.game.players.findIndex(gp => gp.id === p.id);
          if (playerIndex === -1) return;
 
+         const previousStage = room.game.stage;
          room.game.voteRunItTwice(playerIndex, vote);
+         
+         if (previousStage !== 'handEnd' && room.game.stage === 'handEnd') {
+             const history = await prisma.handHistory.create({
+                 data: {
+                     sessionId: room.sessionId,
+                     handData: room.game.toJSON()
+                 }
+             });
+             room.currentHandHistoryId = history.id;
+         }
+         
          await this.saveRoom(room);
          this.io.to(roomCode).emit('gameState', room.game.getGameState());
          this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
