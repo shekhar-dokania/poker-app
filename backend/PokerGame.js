@@ -472,39 +472,63 @@ class PokerGame {
   executeRunItTwice() {
       if (this.turnTimer) clearTimeout(this.turnTimer);
       
-      const originalPot = this.pot;
-      const originalContributions = this.players.map(p => p.potContribution);
-      const baseCommunityCards = [...this.communityCards];
-      const cardsNeeded = 5 - baseCommunityCards.length;
-
-      // Board 1 (gets ceil remainder)
-      this.pot = Math.ceil(originalPot / 2);
-      this.players.forEach((p, i) => {
-          p.potContribution = Math.ceil(originalContributions[i] / 2);
-      });
-
-      const board1Extra = this.deck.deal(cardsNeeded);
-      this.communityCards = [...baseCommunityCards, ...board1Extra];
-      this.evaluateWinners();
-      const board1Winners = this.winnerInfo;
-
-      // Board 2 (gets floor remainder)
-      this.pot = Math.floor(originalPot / 2);
-      this.players.forEach((p, i) => {
-          p.potContribution = Math.floor(originalContributions[i] / 2);
-      });
+      this.ritOriginalPot = this.pot;
+      this.ritOriginalContributions = this.players.map(p => p.potContribution);
+      this.baseCommunityCards = [...this.communityCards];
       
-      const board2Extra = this.deck.deal(cardsNeeded);
-      this.communityCards = [...baseCommunityCards, ...board2Extra];
-      this.evaluateWinners();
-      const board2Winners = this.winnerInfo;
-
       this.runItTwiceData = {
-          board1: { communityCards: [...baseCommunityCards, ...board1Extra], winners: board1Winners },
-          board2: { communityCards: [...baseCommunityCards, ...board2Extra], winners: board2Winners }
+          board1: { communityCards: [...this.baseCommunityCards], winners: [] },
+          board2: { communityCards: [...this.baseCommunityCards], winners: [] }
       };
 
-      this.stage = 'handEnd';
+      this.isRitShowdown = true;
+      this.ritStage = 'board1';
+      this.advanceRitStage();
+  }
+
+  advanceRitStage() {
+      if (!this.isRitShowdown) return;
+      
+      const cardsNeeded = 5 - this.baseCommunityCards.length;
+      
+      if (this.ritStage === 'board1') {
+          if (this.runItTwiceData.board1.communityCards.length < 5) {
+              const cardsToDeal = this.runItTwiceData.board1.communityCards.length === 0 ? 3 : 1;
+              this.runItTwiceData.board1.communityCards.push(...this.deck.deal(cardsToDeal));
+          } else {
+              // Board 1 complete, evaluate winners
+              this.pot = Math.ceil(this.ritOriginalPot / 2);
+              this.players.forEach((p, i) => {
+                  p.potContribution = Math.ceil(this.ritOriginalContributions[i] / 2);
+              });
+              const tempComm = this.communityCards;
+              this.communityCards = this.runItTwiceData.board1.communityCards;
+              this.evaluateWinners();
+              this.runItTwiceData.board1.winners = this.winnerInfo;
+              this.communityCards = tempComm;
+              
+              this.ritStage = 'board2';
+          }
+      } else if (this.ritStage === 'board2') {
+          if (this.runItTwiceData.board2.communityCards.length < 5) {
+              const cardsToDeal = this.runItTwiceData.board2.communityCards.length === 0 ? 3 : 1;
+              this.runItTwiceData.board2.communityCards.push(...this.deck.deal(cardsToDeal));
+          } else {
+              // Board 2 complete
+              this.pot = Math.floor(this.ritOriginalPot / 2);
+              this.players.forEach((p, i) => {
+                  p.potContribution = Math.floor(this.ritOriginalContributions[i] / 2);
+              });
+              const tempComm = this.communityCards;
+              this.communityCards = this.runItTwiceData.board2.communityCards;
+              this.evaluateWinners();
+              this.runItTwiceData.board2.winners = this.winnerInfo;
+              this.communityCards = tempComm;
+              
+              this.stage = 'handEnd';
+              this.isRitShowdown = false;
+          }
+      }
       this.turnStartTime = Date.now();
   }
 
@@ -563,7 +587,12 @@ class PokerGame {
       runItTwiceData: this.runItTwiceData,
       ritVotes: this.ritVotes,
       handCount: this.handCount,
-      isAllInShowdown: this.isAllInShowdown
+      isAllInShowdown: this.isAllInShowdown,
+      isRitShowdown: this.isRitShowdown,
+      ritStage: this.ritStage,
+      ritOriginalPot: this.ritOriginalPot,
+      ritOriginalContributions: this.ritOriginalContributions,
+      baseCommunityCards: this.baseCommunityCards
     };
   }
 
@@ -587,6 +616,11 @@ class PokerGame {
     game.ritVotes = data.ritVotes || {};
     game.handCount = data.handCount || 0;
     game.isAllInShowdown = data.isAllInShowdown || false;
+    game.isRitShowdown = data.isRitShowdown || false;
+    game.ritStage = data.ritStage || 'board1';
+    game.ritOriginalPot = data.ritOriginalPot || 0;
+    game.ritOriginalContributions = data.ritOriginalContributions || [];
+    game.baseCommunityCards = data.baseCommunityCards || [];
     return game;
   }
 }
