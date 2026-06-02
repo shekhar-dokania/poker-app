@@ -185,6 +185,36 @@ class RoomManager {
       await redis.sRem(`user_rooms:${userId}`, roomCode);
   }
 
+  async updateUserProfile(userId, profileUpdates) {
+      const roomCodes = await redis.sMembers(`user_rooms:${userId}`);
+      for (const roomCode of roomCodes) {
+          await this.withRoomLock(roomCode, false, async (room) => {
+              let updated = false;
+              const player = room.players.find(p => p.id === userId);
+              if (player) {
+                  if (profileUpdates.name) player.name = profileUpdates.name;
+                  if (profileUpdates.avatar) player.avatar = profileUpdates.avatar;
+                  updated = true;
+              }
+              
+              if (room.game) {
+                  const gamePlayer = room.game.players.find(p => p.id === userId);
+                  if (gamePlayer) {
+                      if (profileUpdates.name) gamePlayer.name = profileUpdates.name;
+                      if (profileUpdates.avatar) gamePlayer.avatar = profileUpdates.avatar;
+                      updated = true;
+                  }
+              }
+              
+              if (updated) {
+                  await this.saveRoom(room);
+                  this.io.to(roomCode).emit('gameState', room.game ? room.game.getGameState() : {});
+                  this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
+              }
+          });
+      }
+  }
+
   async getUserRooms(userId) {
       const roomCodes = await redis.sMembers(`user_rooms:${userId}`);
       const activeRooms = [];

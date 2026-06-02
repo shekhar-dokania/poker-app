@@ -23,18 +23,18 @@ struct LoginView: View {
                     }.pickerStyle(SegmentedPickerStyle())
                     .padding()
                     
-                    TextField("Username", text: $username)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .autocapitalization(.none)
-                        .padding(.horizontal)
-                    
                     if !isLoginMode {
-                        TextField("Email", text: $email)
-                            .keyboardType(.emailAddress)
+                        TextField("Username", text: $username)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .autocapitalization(.none)
                             .padding(.horizontal)
                     }
+                    
+                    TextField("Email", text: $email)
+                        .keyboardType(.emailAddress)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .autocapitalization(.none)
+                        .padding(.horizontal)
                     
                     SecureField("Password", text: $password)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -122,14 +122,18 @@ struct LoginView: View {
     }
     
     private func handleAction() {
-        if username.isEmpty || password.isEmpty {
-            errorMessage = "Please enter username and password."
-            return
-        }
-        
-        if !isLoginMode {
-            if email.isEmpty {
-                errorMessage = "Please enter an email address."
+        if isLoginMode {
+            if email.isEmpty || password.isEmpty {
+                errorMessage = "Please enter email and password."
+                return
+            }
+            if !isValidEmail(email) {
+                errorMessage = "Please enter a valid email address."
+                return
+            }
+        } else {
+            if username.isEmpty || email.isEmpty || password.isEmpty {
+                errorMessage = "Please fill in all fields."
                 return
             }
             if !isValidEmail(email) {
@@ -159,9 +163,9 @@ struct LoginView: View {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        var bodyData: [String: String] = ["username": username, "password": password]
+        var bodyData: [String: String] = ["email": email, "password": password]
         if !isLoginMode {
-            bodyData["email"] = email
+            bodyData["username"] = username
         }
         
         request.httpBody = try? JSONSerialization.data(withJSONObject: bodyData)
@@ -178,7 +182,7 @@ struct LoginView: View {
                 
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     if let success = json["success"] as? Bool, success, let token = json["token"] as? String {
-                        self.storedUsername = username
+                        self.storedUsername = isLoginMode ? (json["user"] as? [String: Any])?["username"] as? String ?? "" : username
                         let user = json["user"] as? [String: Any]
                         AuthManager.shared.login(token: token, user: user)
                     } else if let err = json["error"] as? String {

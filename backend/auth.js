@@ -60,9 +60,40 @@ router.post('/avatar', authenticateToken, async (req, res) => {
             data: { avatar }
         });
         
+        if (req.roomManager) {
+            await req.roomManager.updateUserProfile(req.user.userId, { avatar });
+        }
+        
         res.json({ success: true, user: { id: updatedUser.id, username: updatedUser.username, avatar: updatedUser.avatar } });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Username Update Endpoint
+router.post('/username', authenticateToken, async (req, res) => {
+    try {
+        const { username } = req.body;
+        if (!username || username.trim() === '') {
+            return res.status(400).json({ error: 'Username cannot be empty' });
+        }
+        
+        const existing = await prisma.user.findUnique({ where: { username: username.trim() } });
+        if (existing && existing.id !== req.user.userId) {
+             return res.status(400).json({ error: 'Username already taken' });
+        }
+
+        const updatedUser = await prisma.user.update({
+            where: { id: req.user.userId },
+            data: { username: username.trim() }
+        });
+        
+        if (req.roomManager) {
+            await req.roomManager.updateUserProfile(req.user.userId, { name: username.trim() });
+        }
+        res.json({ success: true, user: { id: updatedUser.id, username: updatedUser.username, avatar: updatedUser.avatar } });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to update username' });
     }
 });
 
@@ -112,15 +143,16 @@ router.post('/register', authLimiter, async (req, res) => {
 // Login Endpoint
 router.post('/login', authLimiter, async (req, res) => {
     try {
-        const { username, password } = req.body;
+        const { email, password } = req.body;
         
-        // Find by username or email
+        if (!email) {
+            return res.status(400).json({ error: 'Email is required' });
+        }
+
+        // Find by email
         const user = await prisma.user.findFirst({ 
             where: { 
-                OR: [
-                    { username: username },
-                    { email: username.toLowerCase().trim() }
-                ]
+                email: email.toLowerCase().trim()
             } 
         });
         

@@ -10,8 +10,6 @@ app.use(cors());
 app.use(express.json()); // Added for body parsing
 
 const { authRouter, JWT_SECRET } = require('./auth');
-app.use('/auth', authRouter);
-
 const jwt = require('jsonwebtoken');
 
 const server = http.createServer(app);
@@ -24,6 +22,12 @@ const io = new Server(server, {
 
 const roomManager = new RoomManager(io);
 const clubManager = new ClubManager(io);
+
+app.use((req, res, next) => {
+    req.roomManager = roomManager;
+    next();
+});
+app.use('/auth', authRouter);
 
 io.use((socket, next) => {
     let token = socket.handshake.auth?.token;

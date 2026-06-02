@@ -80,4 +80,37 @@ class AuthManager: ObservableObject {
             }
         }.resume()
     }
+    
+    func updateUsername(newUsername: String, completion: @escaping (Bool, String?) -> Void) {
+        guard let token = jwtToken, let url = URL(string: "\(AppConfig.serverURL)/auth/username") else {
+            completion(false, "Invalid URL or Token")
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = ["username": newUsername]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                DispatchQueue.main.async { completion(false, error.localizedDescription) }
+                return
+            }
+            if let data = data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let success = json["success"] as? Bool, success {
+                    DispatchQueue.main.async {
+                        self.username = newUsername
+                        completion(true, nil)
+                    }
+                } else {
+                    let errMsg = json["error"] as? String ?? "Unknown error"
+                    DispatchQueue.main.async { completion(false, errMsg) }
+                }
+            } else {
+                DispatchQueue.main.async { completion(false, "Invalid response") }
+            }
+        }.resume()
+    }
 }

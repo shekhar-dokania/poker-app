@@ -3,6 +3,10 @@ import SwiftUI
 struct ProfileView: View {
     @ObservedObject private var authManager = AuthManager.shared
     
+    @State private var isEditingUsername = false
+    @State private var editedUsername = ""
+    @State private var errorMessage = ""
+    
     let avatars = [
         "poker_shark", "poker_cowboy", "poker_hoodie", "poker_king",
         "poker_tuxedo", "poker_steampunk", "poker_mobster", "poker_flapper",
@@ -39,10 +43,61 @@ struct ProfileView: View {
                                     .shadow(radius: 10)
                             }
                             
-                            Text(authManager.username)
-                                .font(.title)
-                                .bold()
-                                .foregroundColor(.white)
+                            if isEditingUsername {
+                                HStack {
+                                    TextField("Username", text: $editedUsername)
+                                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                                        .foregroundColor(.black)
+                                        .frame(width: 180)
+                                    
+                                    Button("Save") {
+                                        if editedUsername.trimmingCharacters(in: .whitespaces).isEmpty {
+                                            errorMessage = "Cannot be empty"
+                                            return
+                                        }
+                                        authManager.updateUsername(newUsername: editedUsername) { success, error in
+                                            if success {
+                                                isEditingUsername = false
+                                                errorMessage = ""
+                                            } else {
+                                                errorMessage = error ?? "Error saving username"
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.blue)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(6)
+                                    
+                                    Button("Cancel") {
+                                        isEditingUsername = false
+                                        errorMessage = ""
+                                    }
+                                    .foregroundColor(.gray)
+                                }
+                                if !errorMessage.isEmpty {
+                                    Text(errorMessage)
+                                        .foregroundColor(.red)
+                                        .font(.caption)
+                                }
+                            } else {
+                                HStack {
+                                    Text(authManager.username)
+                                        .font(.title)
+                                        .bold()
+                                        .foregroundColor(.white)
+                                        
+                                    Button(action: {
+                                        editedUsername = authManager.username
+                                        isEditingUsername = true
+                                    }) {
+                                        Image(systemName: "pencil.circle.fill")
+                                            .foregroundColor(.gray)
+                                            .font(.title2)
+                                    }
+                                }
+                            }
                         }
                         .padding(.top, 40)
                         
