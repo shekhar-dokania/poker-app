@@ -481,6 +481,7 @@ class PokerGame {
           board2: { communityCards: [...this.baseCommunityCards], winners: [] }
       };
 
+      this.stage = 'ritShowdown';
       this.isRitShowdown = true;
       this.ritStage = 'board1';
       this.advanceRitStage();
