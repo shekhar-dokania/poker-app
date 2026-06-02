@@ -474,6 +474,14 @@ class RoomManager {
           return;
       }
       
+      room.game.players.filter(p => p.isStandingUp).forEach(gp => {
+          const sp = room.players.find(p => p.id === gp.id);
+          if (sp) {
+              sp.cashedOutChips = (sp.cashedOutChips || 0) + gp.chips;
+              sp.chips = gp.chips;
+          }
+      });
+      
       const success = room.game.startGame();
       if (success) {
          await this.saveRoom(room);
@@ -501,7 +509,10 @@ class RoomManager {
 
         room.game.players.filter(p => p.isStandingUp).forEach(gp => {
             const sp = room.players.find(p => p.id === gp.id);
-            if (sp) sp.chips = gp.chips;
+            if (sp) {
+                sp.cashedOutChips = (sp.cashedOutChips || 0) + gp.chips;
+                sp.chips = gp.chips;
+            }
         });
 
         const success = room.game.startGame();
@@ -559,12 +570,12 @@ class RoomManager {
           .filter(p => p.totalBuyIn && p.totalBuyIn > 0)
           .map(p => {
               const gp = room.game.players.find(gameP => gameP.id === p.id);
-              const currentChips = gp ? gp.chips + (gp.queuedReload || 0) : p.chips;
+              const currentChips = gp ? gp.chips + (gp.queuedReload || 0) + (gp.potContribution || 0) : p.chips;
               return {
                   name: p.name,
                   totalBuyIn: p.totalBuyIn,
                   chips: currentChips,
-                  net: currentChips - p.totalBuyIn
+                  net: currentChips + (p.cashedOutChips || 0) - p.totalBuyIn
               };
           })
     };
@@ -589,11 +600,17 @@ class RoomManager {
          const alreadySeated = room.game.players.find(p => p.id === spectator.id);
          if (alreadySeated) return;
          
-         const minBuyIn = room.settings.minBuyIn || 100;
-         const maxBuyIn = room.settings.maxBuyIn || 10000;
-         const finalChips = Math.max(minBuyIn, Math.min(chips, maxBuyIn));
+         let finalChips;
+         if (spectator.cashedOutChips && spectator.cashedOutChips > 0) {
+             finalChips = spectator.cashedOutChips;
+             spectator.cashedOutChips = 0;
+         } else {
+             const minBuyIn = room.settings.minBuyIn || 100;
+             const maxBuyIn = room.settings.maxBuyIn || 10000;
+             finalChips = Math.max(minBuyIn, Math.min(chips, maxBuyIn));
+             spectator.totalBuyIn = (spectator.totalBuyIn || 0) + finalChips;
+         }
          
-         spectator.totalBuyIn = (spectator.totalBuyIn || 0) + finalChips;
          spectator.chips = finalChips;
          room.game.addPlayer({
              id: spectator.id,
@@ -625,6 +642,7 @@ class RoomManager {
          if (gpIndex !== -1) {
              const gp = room.game.players[gpIndex];
              if (room.game.stage === 'waiting' || room.game.stage === 'handEnd') {
+                 sp.cashedOutChips = (sp.cashedOutChips || 0) + gp.chips;
                  sp.chips = gp.chips;
                  room.game.players.splice(gpIndex, 1);
              } else {
@@ -766,29 +784,42 @@ class RoomManager {
      
      const roomCode = room.code;
      const roomState = await this.getRoomState(roomCode);
-     const finalBalances = roomState.ledgerBalances;
+     const finalBalances = [];
      
      // Write to Postgres Ledger using $transaction for ACID compliance
      try {
          await prisma.$transaction(async (tx) => {
-             for (let player of room.players) {
+             for (const player of room.players) {
+                 const gp = room.game.players.find(g => g.id === player.id);
+                 if (gp) player.chips = gp.chips; // sync back
+                 
                  if (player.totalBuyIn > 0) {
-                     const netProfit = player.chips - player.totalBuyIn;
+                     const netProfit = player.chips + (player.cashedOutChips || 0) - player.totalBuyIn;
                      
-                     await tx.ledgerEntry.create({
-                         data: {
-                             sessionId: room.sessionId,
-                             userId: player.id,
-                             totalBuyIn: player.totalBuyIn,
-                             finalChips: player.chips,
-                             netProfit: netProfit
-                         }
+                     // Add to Final Balances array
+                     finalBalances.push({
+                         name: player.name,
+                         totalBuyIn: player.totalBuyIn,
+                         chips: player.chips,
+                         net: netProfit
                      });
+                     
+                     if (room.sessionId && player.id) {
+                         await tx.ledgerEntry.create({
+                             data: {
+                                 sessionId: room.sessionId,
+                                 userId: player.id,
+                                 totalBuyIn: player.totalBuyIn,
+                                 finalChips: player.chips + (player.cashedOutChips || 0),
+                                 netProfit: netProfit
+                             }
+                         });
     
-                     await tx.user.update({
-                         where: { id: player.id },
-                         data: { totalProfit: { increment: netProfit } }
-                     });
+                         await tx.user.update({
+                             where: { id: player.id },
+                             data: { totalProfit: { increment: netProfit } }
+                         });
+                     }
                  }
              }
     
