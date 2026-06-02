@@ -1,4 +1,5 @@
 import SwiftUI
+import AuthenticationServices
 
 struct LoginView: View {
     @State private var isLoginMode = true
@@ -57,14 +58,36 @@ struct LoginView: View {
                         ProgressView()
                             .padding()
                     } else {
-                        Button(action: handleAction) {
-                            Text(isLoginMode ? "Log In" : "Create Account")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                                .background(Color.blue)
-                                .cornerRadius(10)
+                        VStack(spacing: 16) {
+                            Button(action: handleAction) {
+                                Text(isLoginMode ? "Log In" : "Create Account")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .frame(maxWidth: .infinity)
+                                    .background(Color.blue)
+                                    .cornerRadius(10)
+                            }
+                            
+                            HStack {
+                                VStack { Divider().background(Color.gray) }
+                                Text("OR")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                                VStack { Divider().background(Color.gray) }
+                            }
+                            
+                            SignInWithAppleButton(
+                                .signIn,
+                                onRequest: { request in
+                                    request.requestedScopes = [.fullName, .email]
+                                },
+                                onCompletion: { result in
+                                    handleAppleLogin(result: result)
+                                }
+                            )
+                            .signInWithAppleButtonStyle(.black)
+                            .frame(height: 50)
                         }
                         .padding()
                     }
@@ -165,6 +188,71 @@ struct LoginView: View {
                 }
             }
         }.resume()
+    }
+
+    private func handleAppleLogin(result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .success(let authorization):
+            if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential {
+                guard let identityTokenData = appleIDCredential.identityToken,
+                      let identityToken = String(data: identityTokenData, encoding: .utf8) else {
+                    self.errorMessage = "Unable to read Apple token"
+                    return
+                }
+                
+                let fullName = [appleIDCredential.fullName?.givenName, appleIDCredential.fullName?.familyName]
+                    .compactMap { $0 }
+                    .joined(separator: " ")
+                
+                self.isLoading = true
+                self.errorMessage = ""
+                
+                guard let url = URL(string: "\(AppConfig.serverURL)/auth/apple") else {
+                    self.isLoading = false
+                    return
+                }
+                
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                
+                let bodyData: [String: String] = [
+                    "identityToken": identityToken,
+                    "fullName": fullName
+                ]
+                
+                request.httpBody = try? JSONSerialization.data(withJSONObject: bodyData)
+                
+                URLSession.shared.dataTask(with: request) { data, response, error in
+                    DispatchQueue.main.async {
+                        self.isLoading = false
+                        
+                        if let _ = error {
+                            self.errorMessage = "Network error. Please try again."
+                            return
+                        }
+                        guard let data = data else { return }
+                        
+                        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                            if let success = json["success"] as? Bool, success, let token = json["token"] as? String {
+                                if let user = json["user"] as? [String: Any], let uname = user["username"] as? String {
+                                    self.storedUsername = uname
+                                }
+                                AuthManager.shared.login(token: token)
+                            } else if let err = json["error"] as? String {
+                                self.errorMessage = err
+                            } else {
+                                self.errorMessage = "An unknown error occurred."
+                            }
+                        }
+                    }
+                }.resume()
+            }
+        case .failure(let error):
+            if (error as NSError).code != ASAuthorizationError.canceled.rawValue {
+                self.errorMessage = "Apple Sign-In failed: \(error.localizedDescription)"
+            }
+        }
     }
 }
 

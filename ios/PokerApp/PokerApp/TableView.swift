@@ -247,22 +247,38 @@ struct TableView: View {
                         .font(.headline)
                         .padding(.top, 10)
                     
-                    HStack {
+                    VStack(spacing: 12) {
                         let minBuyInLimit = Double(socketManager.roomSettings?["minBuyIn"] as? Int ?? 100)
                         let maxBuyInLimit = Double(socketManager.roomSettings?["maxBuyIn"] as? Int ?? 10000)
                         let safeMax = max(minBuyInLimit, maxBuyInLimit)
                         let safeAmount = min(max(buyInAmount, minBuyInLimit), safeMax)
                         
-                        Text("Buy-In: \(Int(safeAmount))")
-                            .foregroundColor(.primary)
-                            .bold()
-                            .frame(width: 120, alignment: .leading)
+                        HStack(spacing: 8) {
+                            Button("Min") { buyInAmount = minBuyInLimit }
+                                .buttonStyle(ShortcutButtonStyle())
+                            Button("Half") { buyInAmount = min(safeMax, max(minBuyInLimit, safeMax / 2)) }
+                                .buttonStyle(ShortcutButtonStyle())
+                            Button("Max") { buyInAmount = safeMax }
+                                .buttonStyle(ShortcutButtonStyle())
+                        }
                         
-                        Slider(value: Binding(
-                            get: { safeAmount },
-                            set: { buyInAmount = $0 }
-                        ), in: minBuyInLimit...safeMax, step: 10)
-                            .accentColor(.green)
+                        HStack {
+                            Text("Chips:")
+                                .foregroundColor(.primary)
+                                .bold()
+                                .frame(width: 60, alignment: .leading)
+                            
+                            TextField("Amount", value: $buyInAmount, formatter: NumberFormatter())
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .keyboardType(.numberPad)
+                                .frame(width: 80)
+                            
+                            Slider(value: Binding(
+                                get: { safeAmount },
+                                set: { buyInAmount = $0 }
+                            ), in: minBuyInLimit...safeMax, step: 1)
+                                .accentColor(.green)
+                        }
                     }
                     .padding(.horizontal)
                     
@@ -292,21 +308,37 @@ struct TableView: View {
                         VStack(spacing: 12) {
                             Text("Reload Chips")
                                 .font(.headline)
-                            HStack {
+                            VStack(spacing: 12) {
                                 let minBuyInLimit = Double(socketManager.roomSettings?["minBuyIn"] as? Int ?? 100)
                                 let maxBuyInLimit = Double(socketManager.roomSettings?["maxBuyIn"] as? Int ?? 10000)
                                 let safeMax = max(minBuyInLimit, maxBuyInLimit)
                                 let safeAmount = min(max(reloadAmount, minBuyInLimit), safeMax)
                                 
-                                Text("\(Int(safeAmount))")
-                                    .bold()
-                                    .frame(width: 60)
+                                HStack(spacing: 8) {
+                                    Button("Min") { reloadAmount = minBuyInLimit }
+                                        .buttonStyle(ShortcutButtonStyle())
+                                    Button("Half") { reloadAmount = min(safeMax, max(minBuyInLimit, safeMax / 2)) }
+                                        .buttonStyle(ShortcutButtonStyle())
+                                    Button("Max") { reloadAmount = safeMax }
+                                        .buttonStyle(ShortcutButtonStyle())
+                                }
                                 
-                                Slider(value: Binding(
-                                    get: { safeAmount },
-                                    set: { reloadAmount = $0 }
-                                ), in: minBuyInLimit...safeMax, step: 10)
-                                    .accentColor(.green)
+                                HStack {
+                                    Text("Chips:")
+                                        .bold()
+                                        .frame(width: 60, alignment: .leading)
+                                    
+                                    TextField("Amount", value: $reloadAmount, formatter: NumberFormatter())
+                                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                                        .keyboardType(.numberPad)
+                                        .frame(width: 80)
+                                    
+                                    Slider(value: Binding(
+                                        get: { safeAmount },
+                                        set: { reloadAmount = $0 }
+                                    ), in: minBuyInLimit...safeMax, step: 1)
+                                        .accentColor(.green)
+                                }
                             }
                             .padding(.horizontal)
                             HStack(spacing: 16) {

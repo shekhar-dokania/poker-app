@@ -20,6 +20,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
     "jsonwebtoken": "^9.0.3",
+    "jwks-rsa": "^4.0.1",
     "pokersolver": "^2.1.4",
     "prisma": "^5.22.0",
     "redis": "^5.12.1",

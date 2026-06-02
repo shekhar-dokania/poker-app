@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
+const jwksClient = require('jwks-rsa');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -162,6 +163,75 @@ router.post('/reset-password', async (req, res) => {
         });
 
         res.json({ success: true, message: 'Password has been reset successfully.' });
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Apple Sign-In Endpoint
+const appleJwksClient = jwksClient({
+  jwksUri: 'https://appleid.apple.com/auth/keys'
+});
+
+function getAppleSigningKey(header, callback) {
+  appleJwksClient.getSigningKey(header.kid, function(err, key) {
+    if (err) return callback(err, null);
+    const signingKey = key.publicKey || key.rsaPublicKey;
+    callback(null, signingKey);
+  });
+}
+
+router.post('/apple', authLimiter, async (req, res) => {
+    try {
+        const { identityToken, fullName } = req.body;
+        if (!identityToken) return res.status(400).json({ error: 'identityToken required' });
+        
+        jwt.verify(identityToken, getAppleSigningKey, {
+            algorithms: ['RS256'],
+            issuer: 'https://appleid.apple.com'
+        }, async (err, decoded) => {
+            if (err) return res.status(401).json({ error: 'Invalid Apple token' });
+            
+            const email = decoded.email;
+            if (!email) return res.status(400).json({ error: 'No email provided by Apple' });
+            
+            const normalizedEmail = email.toLowerCase().trim();
+            let user = await prisma.user.findFirst({ where: { email: normalizedEmail } });
+            
+            if (!user) {
+                // Determine username from fullName or prefix of email
+                let baseUsername = fullName || normalizedEmail.split('@')[0];
+                baseUsername = baseUsername.replace(/[^a-zA-Z0-9]/g, '').substring(0, 12);
+                if (baseUsername.length < 3) baseUsername = 'player' + baseUsername;
+                
+                let username = baseUsername;
+                let counter = 1;
+                while (await prisma.user.findFirst({ where: { username } })) {
+                    username = `${baseUsername}${counter}`;
+                    counter++;
+                }
+                
+                const randomPassword = crypto.randomBytes(16).toString('hex') + 'A1@';
+                const passwordHash = await bcrypt.hash(randomPassword, 10);
+                
+                user = await prisma.user.create({
+                    data: {
+                        username,
+                        email: normalizedEmail,
+                        passwordHash,
+                        provider: 'apple'
+                    }
+                });
+            } else if (user.provider !== 'apple' && user.provider !== 'local') {
+                await prisma.user.update({
+                    where: { id: user.id },
+                    data: { provider: 'apple' }
+                });
+            }
+            
+            const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+            res.json({ success: true, token, user: { id: user.id, username: user.username } });
+        });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
     }
