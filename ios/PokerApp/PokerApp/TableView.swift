@@ -81,10 +81,10 @@ struct TableView: View {
                 
                 ZStack {
                     // Table background
-                    Ellipse()
+                    Capsule()
                         .fill(Color(red: 0.1, green: 0.5, blue: 0.2)) // Casino Green
                         .frame(width: tableWidth, height: tableHeight)
-                        .overlay(Ellipse().stroke(Color(red: 0.4, green: 0.2, blue: 0.1), lineWidth: 12)) // Wood border
+                        .overlay(Capsule().stroke(Color(red: 0.4, green: 0.2, blue: 0.1), lineWidth: 12)) // Wood border
                         .shadow(color: Color.black.opacity(0.4), radius: 10, x: 0, y: 5)
                         .position(x: centerX, y: centerY)
                     
