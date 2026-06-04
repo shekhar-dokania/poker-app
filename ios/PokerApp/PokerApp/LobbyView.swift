@@ -1,4 +1,5 @@
 import SwiftUI
+import StoreKit
 
 struct LobbyView: View {
     @ObservedObject private var socketManager = PokerSocketManager.shared
