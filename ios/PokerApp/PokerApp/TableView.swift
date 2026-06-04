@@ -668,6 +668,40 @@ struct TableView: View {
                         
                         let isPaused = socketManager.roomState?["isPaused"] as? Bool ?? false
                         let canResume = !isPaused || authManager.coins > 0
+                        HStack(spacing: 20) {
+                            Button(action: {
+                                socketManager.resumeTable()
+                            }) {
+                                Text("Resume Table")
+                                    .fontWeight(.bold)
+                                    .padding()
+                                    .frame(maxWidth: .infinity)
+                                    .background(canResume ? Color.blue : Color.gray)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(10)
+                            }
+                            .disabled(!canResume)
+
+                            if !canResume {
+                                Button(action: {
+                                    StoreManager.shared.purchaseCoins(productId: "com.mayhempoker.coins.500") { success in
+                                        if success {
+                                            print("Top up successful!")
+                                        }
+                                    }
+                                }) {
+                                    HStack {
+                                        Image(systemName: "plus.circle.fill")
+                                        Text("Top Up")
+                                    }
+                                    .fontWeight(.bold)
+                                    .padding()
+                                    .background(Color.green)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(10)
+                                }
+                            }
+                        }
                         
                         Button(action: {
                             socketManager.togglePauseRoom()

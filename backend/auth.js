@@ -49,6 +49,27 @@ router.get('/me', authenticateToken, async (req, res) => {
     }
 });
 
+// Buy Coins Mock Endpoint
+router.post('/buy-coins', authenticateToken, async (req, res) => {
+    try {
+        const { productId } = req.body;
+        // Mock purchase mapping
+        let amount = 100;
+        if (productId === 'com.mayhempoker.coins.500') amount = 500;
+        if (productId === 'com.mayhempoker.coins.1000') amount = 1000;
+
+        const user = await prisma.user.update({
+            where: { id: req.user.userId },
+            data: { coins: { increment: amount } }
+        });
+        
+        res.json({ success: true, coins: user.coins });
+    } catch (error) {
+        console.error("Buy Coins Error:", error);
+        res.status(500).json({ error: 'Failed to purchase coins' });
+    }
+});
+
 // Claim Free Coins Endpoint
 router.post('/claim-free-coins', authenticateToken, async (req, res) => {
     try {

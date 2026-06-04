@@ -3,6 +3,7 @@ import SwiftUI
 struct LobbyView: View {
     @ObservedObject private var socketManager = PokerSocketManager.shared
     @ObservedObject private var authManager = AuthManager.shared
+    @ObservedObject private var storeManager = StoreManager.shared
     @AppStorage("username") var storedUsername: String = ""
     @State private var roomCodeToJoin = ""
     @State private var selectedGameType = "holdem"
@@ -58,18 +59,27 @@ struct LobbyView: View {
                     .disabled(!authManager.canClaimDailyCoins)
                     
                     Button(action: {
-                        authManager.buyMockCoins { success, error in
-                            if let err = error {
-                                print("Buy coins error:", err)
+                        storeManager.purchaseCoins(productId: "com.mayhempoker.coins.500") { success in
+                            if success {
+                                print("Successfully purchased 500 coins!")
+                            } else {
+                                print("Purchase failed: \(storeManager.lastPurchaseError ?? "Unknown")")
                             }
                         }
                     }) {
-                        Text("Buy 100 Coins (Mock)")
-                            .font(.caption)
-                            .padding(6)
-                            .background(Color.green)
-                            .foregroundColor(.white)
-                            .cornerRadius(8)
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                            Text("Buy 500 Coins")
+                        }
+                        .font(.caption)
+                        .padding(6)
+                        .background(Color.green)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                    }
+                    
+                    if storeManager.isPurchasing {
+                        ProgressView()
                     }
                 }
                 .padding(.horizontal)
