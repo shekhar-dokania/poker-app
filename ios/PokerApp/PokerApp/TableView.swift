@@ -564,11 +564,6 @@ struct TableView: View {
                             }
                             .padding(.horizontal)
                             .padding(.vertical, 8)
-                        } else {
-                            Text("Waiting for next hand...")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-                                .padding()
                         }
                     } else if isGameRunning {
                         HStack(spacing: 12) {

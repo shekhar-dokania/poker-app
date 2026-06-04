@@ -45,9 +45,13 @@ class RoomManager {
   async updateTurnTimer(room) {
       if (room.game.stage === 'waiting') return;
       let limit = room.game.settings.turnTimeLimit || 30;
-      if (room.game.stage === 'handEnd') limit = 10;
-      if (room.game.isAllInShowdown) limit = 2;
-      if (room.game.isRitShowdown) limit = 2;
+      if (room.game.stage === 'handEnd') {
+          const hasShowdown = room.game.isAllInShowdown || room.game.isRitShowdown || room.game.players.some(p => p.revealedHand && p.revealedHand.length > 0);
+          limit = hasShowdown ? 8 : 3;
+      } else {
+          if (room.game.isAllInShowdown) limit = 2;
+          if (room.game.isRitShowdown) limit = 2;
+      }
       const expireTime = room.game.turnStartTime + (limit * 1000);
       await redis.zAdd('room_turn_timeouts', [{ score: expireTime, value: room.code }]);
   }
