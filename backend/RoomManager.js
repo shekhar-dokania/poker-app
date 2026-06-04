@@ -93,9 +93,13 @@ class RoomManager {
           await this.withRoomLock(roomCode, false, async (room) => {
               if (room.game && room.game.stage !== 'waiting') {
                   let limit = room.game.settings.turnTimeLimit || 30;
-                  if (room.game.stage === 'handEnd') limit = 10;
-                  if (room.game.isAllInShowdown) limit = 2; // 2 seconds delay between cards
-                  if (room.game.isRitShowdown) limit = 2;
+                  if (room.game.stage === 'handEnd') {
+                      const hasShowdown = room.game.isAllInShowdown || room.game.isRitShowdown || room.game.players.some(p => p.revealedHand && p.revealedHand.length > 0);
+                      limit = hasShowdown ? 8 : 3;
+                  } else {
+                      if (room.game.isAllInShowdown) limit = 2;
+                      if (room.game.isRitShowdown) limit = 2;
+                  }
                   
                   const expireTime = room.game.turnStartTime + (limit * 1000);
                   
@@ -506,14 +510,6 @@ class RoomManager {
           this.io.to(room.code).emit('gameState', room.game.getGameState());
           this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
           await this.updateTurnTimer(room);
-
-          if (room.game.stage === 'handEnd' && !room.game.handEndTimer) {
-             room.game.handEndTimer = setTimeout(async () => {
-                await this.withRoomLock(room.code, false, async (r) => {
-                    await this.startNextHandInternal(r);
-                });
-             }, 5000);
-          }
       });
   }
 
@@ -954,9 +950,6 @@ class RoomManager {
      
      // Remove timeouts
      await redis.zRem('room_turn_timeouts', room.code);
-     if (room.game.handEndTimer) {
-         clearTimeout(room.game.handEndTimer);
-     }
      
      // Pause Billing Timer
      const score = await redis.zScore('room_billing', room.code);
