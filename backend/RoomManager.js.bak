@@ -1,7 +1,5 @@
 const crypto = require('crypto');
-const { gameReducer, getGameState } = require('./game/engine');
-const { ACTIONS } = require('./game/types');
-
+const PokerGame = require('./PokerGame');
 const { PrismaClient } = require('@prisma/client');
 const { createClient } = require('redis');
 const { Mutex } = require('async-mutex');
@@ -115,36 +113,36 @@ class RoomManager {
                           await this.startNextHandInternal(room);
                       } else if (room.game.isAllInShowdown) {
                           console.log(`Advancing all-in showdown stage in room ${room.code}`);
-                          room.game = gameReducer(room.game, { type: ACTIONS.ADVANCE_STAGE });
+                          room.game.advanceStage();
                           if (room.game.stage === 'handEnd') {
                               room.game.isAllInShowdown = false;
                               const history = await prisma.handHistory.create({
-                                  data: { sessionId: room.sessionId, handData: room.game }
+                                  data: { sessionId: room.sessionId, handData: room.game.toJSON() }
                               });
                               room.currentHandHistoryId = history.id;
                           }
                           await this.saveRoom(room);
-                          this.io.to(room.code).emit('gameState', getGameState(room.game));
+                          this.io.to(room.code).emit('gameState', room.game.getGameState());
                           this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
                           await this.updateTurnTimer(room);
                       } else if (room.game.isRitShowdown) {
                           console.log(`Advancing RIT showdown stage in room ${room.code}`);
-                          room.game = gameReducer(room.game, { type: ACTIONS.ADVANCE_RIT });
+                          room.game.advanceRitStage();
                           if (room.game.stage === 'handEnd') {
                               const history = await prisma.handHistory.create({
-                                  data: { sessionId: room.sessionId, handData: room.game }
+                                  data: { sessionId: room.sessionId, handData: room.game.toJSON() }
                               });
                               room.currentHandHistoryId = history.id;
                           }
                           await this.saveRoom(room);
-                          this.io.to(room.code).emit('gameState', getGameState(room.game));
+                          this.io.to(room.code).emit('gameState', room.game.getGameState());
                           this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
                           await this.updateTurnTimer(room);
                       } else if (room.game.stage === 'runItTwicePrompt') {
                           console.log(`Auto-declining RIT in room ${room.code} due to timeout`);
-                          room.game = gameReducer(room.game, { type: ACTIONS.DECLINE_RIT });
+                          room.game.declineRunItTwice();
                           await this.saveRoom(room);
-                          this.io.to(room.code).emit('gameState', getGameState(room.game));
+                          this.io.to(room.code).emit('gameState', room.game.getGameState());
                           this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
                           await this.updateTurnTimer(room);
                           
@@ -152,7 +150,7 @@ class RoomManager {
                               const history = await prisma.handHistory.create({
                                   data: {
                                       sessionId: room.sessionId,
-                                      handData: room.game
+                                      handData: room.game.toJSON()
                                   }
                               });
                               room.currentHandHistoryId = history.id;
@@ -195,7 +193,9 @@ class RoomManager {
     const data = await redis.get(`room:${roomCode}`);
     if (!data) return null;
     const room = JSON.parse(data);
-    
+    if (room.game) {
+        room.game = PokerGame.fromJSON(room.game);
+    }
     return room;
   }
 
@@ -250,7 +250,7 @@ class RoomManager {
               
               if (updated) {
                   await this.saveRoom(room);
-                  this.io.to(roomCode).emit('gameState', room.game ? getGameState(room.game) : {});
+                  this.io.to(roomCode).emit('gameState', room.game ? room.game.getGameState() : {});
                   this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
               }
           });
@@ -350,7 +350,7 @@ class RoomManager {
       gameType: gameType || 'holdem',
       players: [],
       settings: settings || { smallBlind: 1, bigBlind: 2, minBuyIn: 100, maxBuyIn: 10000 },
-      game: gameReducer(null, { type: 'INIT', payload: { gameType: gameType || 'holdem', settings: settings || {} } }),
+      game: new PokerGame(gameType, settings || {}),
       pendingTableEnd: false,
       isPaused: false,
       billingPartialMs: 0
@@ -452,7 +452,7 @@ class RoomManager {
         socket.join(roomCode);
         
         this.io.to(roomCode).emit('roomUpdated', await this.getRoomState(roomCode));
-        this.io.to(roomCode).emit('gameState', getGameState(room.game));
+        this.io.to(roomCode).emit('gameState', room.game.getGameState());
         await this.broadcastPrivateHands(room);
         
         return await this.getRoomState(roomCode);
@@ -498,20 +498,20 @@ class RoomManager {
           const vote = voteData.vote !== undefined ? voteData.vote : voteData;
 
           const previousStage = room.game.stage;
-          room.game = gameReducer(room.game, { type: ACTIONS.RIT_VOTE, payload: { playerIndex: playerIndex, vote: vote } });
+          room.game.voteRunItTwice(playerIndex, vote);
           
           if (previousStage !== 'handEnd' && room.game.stage === 'handEnd') {
               const history = await prisma.handHistory.create({
                   data: {
                       sessionId: room.sessionId,
-                      handData: room.game
+                      handData: room.game.toJSON()
                   }
               });
               room.currentHandHistoryId = history.id;
           }
           
           await this.saveRoom(room);
-          this.io.to(room.code).emit('gameState', getGameState(room.game));
+          this.io.to(room.code).emit('gameState', room.game.getGameState());
           this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
           await this.updateTurnTimer(room);
       });
@@ -519,26 +519,26 @@ class RoomManager {
 
   async handleActionInternal(room, playerId, actionData) {
         const previousStage = room.game.stage;
-        room.game = gameReducer(room.game, { type: ACTIONS.PLAYER_ACTION, payload: { playerId: playerId, actionData: actionData } });
+        room.game.handleAction(playerId, actionData);
         
         if (previousStage !== 'handEnd' && room.game.stage === 'handEnd' && room.game.winnerInfo) {
             const history = await prisma.handHistory.create({
                 data: {
                     sessionId: room.sessionId,
-                    handData: room.game
+                    handData: room.game.toJSON()
                 }
             });
             room.currentHandHistoryId = history.id;
         } else if (previousStage === 'handEnd' && room.game.stage === 'handEnd' && room.currentHandHistoryId) {
             await prisma.handHistory.update({
                 where: { id: room.currentHandHistoryId },
-                data: { handData: room.game }
+                data: { handData: room.game.toJSON() }
             });
         }
         
         await this.saveRoom(room);
 
-        this.io.to(room.code).emit('gameState', getGameState(room.game));
+        this.io.to(room.code).emit('gameState', room.game.getGameState());
         this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
         await this.broadcastPrivateHands(room);
         await this.updateTurnTimer(room);
@@ -575,7 +575,7 @@ class RoomManager {
                  }
              }
              await this.saveRoom(room);
-             this.io.to(room.code).emit('gameState', getGameState(room.game));
+             this.io.to(room.code).emit('gameState', room.game.getGameState());
              this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
              
              if (room.game.stage === 'waiting' && room.game.handCount > 0 && !isSittingOut) {
@@ -607,16 +607,14 @@ class RoomManager {
       
       if (room.isPaused) {
           console.log(`Cannot start next hand in room ${room.code} - paused`);
-          room.game = gameReducer(room.game, { type: ACTIONS.RESET_WAITING });
+          room.game.resetForWaiting();
           await this.saveRoom(room);
-          this.io.to(room.code).emit('gameState', getGameState(room.game));
+          this.io.to(room.code).emit('gameState', room.game.getGameState());
           this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
           return;
       }
       
-      const action = { type: ACTIONS.START_HAND, payload: {} };
-                room.game = gameReducer(room.game, action);
-                const success = action.payload.success;
+      const success = room.game.startGame();
       if (success) {
          const score = await redis.zScore('room_billing', room.code);
          if (!score) {
@@ -626,13 +624,13 @@ class RoomManager {
              room.billingPartialMs = 0;
          }
          await this.saveRoom(room);
-         this.io.to(room.code).emit('gameState', getGameState(room.game));
+         this.io.to(room.code).emit('gameState', room.game.getGameState());
          this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
          await this.broadcastPrivateHands(room);
          await this.updateTurnTimer(room);
       } else {
          console.log("Not enough players to start next hand in room: " + room.code);
-         room.game = gameReducer(room.game, { type: ACTIONS.RESET_WAITING });
+         room.game.resetForWaiting();
          
          // Pause billing timer
          const score = await redis.zScore('room_billing', room.code);
@@ -643,7 +641,7 @@ class RoomManager {
          }
          
          await this.saveRoom(room);
-         this.io.to(room.code).emit('gameState', getGameState(room.game));
+         this.io.to(room.code).emit('gameState', room.game.getGameState());
          this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
          await this.broadcastPrivateHands(room);
       }
@@ -669,9 +667,7 @@ class RoomManager {
             throw new Error("Table is paused. Please resume first.");
         }
         
-        const action = { type: ACTIONS.START_HAND, payload: {} };
-                room.game = gameReducer(room.game, action);
-                const success = action.payload.success;
+        const success = room.game.startGame();
         if (success) {
            const score = await redis.zScore('room_billing', room.code);
            if (!score) {
@@ -681,7 +677,7 @@ class RoomManager {
                room.billingPartialMs = 0;
            }
            await this.saveRoom(room);
-           this.io.to(room.code).emit('gameState', getGameState(room.game));
+           this.io.to(room.code).emit('gameState', room.game.getGameState());
            this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
            await this.broadcastPrivateHands(room);
            await this.updateTurnTimer(room);
@@ -787,15 +783,15 @@ class RoomManager {
          }
          
          spectator.chips = finalChips;
-         room.game = gameReducer(room.game, { type: ACTIONS.ADD_PLAYER, payload: { player: {
+         room.game.addPlayer({
              id: spectator.id,
              name: spectator.name,
              avatar: spectator.avatar,
              chips: finalChips
-         } } });
+         });
          
          await this.saveRoom(room);
-         this.io.to(room.code).emit('gameState', getGameState(room.game));
+         this.io.to(room.code).emit('gameState', room.game.getGameState());
          this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
      });
   }
@@ -820,20 +816,19 @@ class RoomManager {
              if (room.game.stage === 'waiting' || room.game.stage === 'handEnd') {
                  sp.cashedOutChips = (sp.cashedOutChips || 0) + gp.chips;
                  sp.chips = 0;
-                 // Splice replacement handled manually if needed, but lets assume it was just removing the player by id.
-                room.game = gameReducer(room.game, { type: ACTIONS.REMOVE_PLAYER, payload: { playerId: sp.id } });
+                 room.game.players.splice(gpIndex, 1);
              } else {
                  gp.isStandingUp = true;
                  if (gp.status === 'active') {
                      if (room.game.players[room.game.currentTurn] && room.game.players[room.game.currentTurn].id === sp.id) {
-                         room.game = gameReducer(room.game, { type: ACTIONS.PLAYER_ACTION, payload: { playerId: sp.id, actionData: {action: 'fold'} } });
+                         room.game.handleAction(sp.id, {action: 'fold'});
                      } else {
                          gp.status = 'folded';
                      }
                  }
              }
              await this.saveRoom(room);
-             this.io.to(room.code).emit('gameState', getGameState(room.game));
+             this.io.to(room.code).emit('gameState', room.game.getGameState());
              this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
          }
      });
@@ -881,7 +876,7 @@ class RoomManager {
                  }
              }
              await this.saveRoom(room);
-             this.io.to(room.code).emit('gameState', getGameState(room.game));
+             this.io.to(room.code).emit('gameState', room.game.getGameState());
              this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
              
              if (room.game.stage === 'waiting' && room.game.handCount > 0) {
@@ -896,7 +891,7 @@ class RoomManager {
          const sp = await this.getPlayerBySocket(room, socketId);
          if (sp && room.host === sp.id) {
              room.settings = { ...room.settings, ...newSettings };
-             room.game = gameReducer(room.game, { type: ACTIONS.SET_SETTINGS, payload: { settings: room.settings } });
+             room.game.settings = room.settings;
              await this.saveRoom(room);
              this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
          }
