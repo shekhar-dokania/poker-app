@@ -1,4 +1,3 @@
-TRUNCATE TABLE "User" CASCADE;
 -- AlterTable
 ALTER TABLE "User" ADD COLUMN     "email" TEXT NOT NULL,
 ADD COLUMN     "provider" TEXT NOT NULL DEFAULT 'local',
