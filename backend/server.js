@@ -62,13 +62,22 @@ io.on('connection', (socket) => {
   });
 
   socket.on('resumeRoom', async (data, callback) => {
-     try {
-         const { roomCode } = data;
-         await roomManager.resumeRoom(roomCode, socket.user);
-         callback({ success: true });
-     } catch (err) {
-         callback({ success: false, message: err.message });
-     }
+      // Obsolete, left for backwards compatibility
+      try {
+          await roomManager.togglePauseRoom(data.roomCode, socket.user);
+          callback({ success: true });
+      } catch (err) {
+          callback({ success: false, message: err.message });
+      }
+  });
+
+  socket.on('togglePauseRoom', async (data, callback) => {
+      try {
+          const res = await roomManager.togglePauseRoom(data.roomCode, socket.user);
+          callback({ success: true, isPaused: res.isPaused });
+      } catch (err) {
+          callback({ success: false, message: err.message });
+      }
   });
 
   socket.on('joinRoom', async (data, callback) => {
