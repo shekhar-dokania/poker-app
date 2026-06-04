@@ -607,7 +607,7 @@ class RoomManager {
       
       if (room.isPaused) {
           console.log(`Cannot start next hand in room ${room.code} - paused`);
-          room.game.stage = 'waiting';
+          room.game.resetForWaiting();
           await this.saveRoom(room);
           this.io.to(room.code).emit('gameState', room.game.getGameState());
           this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
@@ -630,7 +630,7 @@ class RoomManager {
          await this.updateTurnTimer(room);
       } else {
          console.log("Not enough players to start next hand in room: " + room.code);
-         room.game.stage = 'waiting';
+         room.game.resetForWaiting();
          
          // Pause billing timer
          const score = await redis.zScore('room_billing', room.code);

@@ -102,15 +102,15 @@ class PokerGame {
        if (p.chips > 0 && p.status === 'eliminated') {
            p.status = 'waiting';
        }
-       if (p.chips <= 0 && p.status !== 'disconnected') {
-           p.status = 'eliminated';
-       } else if (p.isSittingOut && p.status !== 'disconnected' && p.status !== 'eliminated') {
-           p.status = 'sitting_out';
-       }
-    });
-    
-    this.communityCards = [];
-    this.pot = 0;
+        if (p.chips <= 0 && p.status !== 'disconnected') {
+            p.status = 'eliminated';
+        } else if (p.isSittingOut && p.status !== 'disconnected' && p.status !== 'eliminated') {
+            p.status = 'sitting_out';
+        }
+     });
+
+     this.communityCards = [];
+     this.pot = 0;
     this.currentHighestBet = 0;
     this.winnerInfo = null;
     this.runItTwiceData = null;
@@ -196,6 +196,28 @@ class PokerGame {
     
     this.turnStartTime = Date.now();
     return true;
+  }
+
+  resetForWaiting() {
+    this.stage = 'waiting';
+    this.communityCards = [];
+    this.pot = 0;
+    this.currentHighestBet = 0;
+    this.deck = [];
+    this.winnerInfo = null;
+    this.runItTwicePromptStartTime = null;
+    this.runItTwiceData = null;
+    this.isAllInShowdown = false;
+    this.isRitShowdown = false;
+    
+    this.players.forEach(p => {
+        p.hand = [];
+        p.revealedHand = [];
+        p.currentBet = 0;
+        p.potContribution = 0;
+        p.hasActed = false;
+        p.runItTwiceVote = null;
+    });
   }
 
   handleAction(socketId, actionData) {

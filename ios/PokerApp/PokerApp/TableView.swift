@@ -667,14 +667,17 @@ struct TableView: View {
                         Divider()
                         
                         let isPaused = socketManager.roomState?["isPaused"] as? Bool ?? false
+                        let canResume = !isPaused || authManager.coins > 0
+                        
                         Button(action: {
                             socketManager.togglePauseRoom()
                             withAnimation { showSideMenu = false }
                         }) {
                             Label(isPaused ? "Resume Table" : "Pause Table", systemImage: isPaused ? "play.circle" : "pause.circle")
                                 .font(.headline)
-                                .foregroundColor(isPaused ? .green : .orange)
+                                .foregroundColor(canResume ? (isPaused ? .green : .orange) : .gray)
                         }
+                        .disabled(!canResume)
                         
                         Button(action: {
                             setSmallBlind = Double(socketManager.roomSettings?["smallBlind"] as? Int ?? 1)
