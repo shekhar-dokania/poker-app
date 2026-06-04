@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "prisma generate",
-    "start": "npx prisma migrate resolve --applied 20260528060432_init || true && npx prisma migrate resolve --applied 20260602000000_auth_updates || true && npx prisma migrate resolve --applied 20260602093500_add_avatar || true && npx prisma migrate resolve --rolled-back 20260604054238_add_monetization_fields || true && prisma migrate deploy && node server.js",
+    "start": "prisma migrate deploy && node server.js",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
