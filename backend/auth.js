@@ -75,7 +75,7 @@ router.post('/verify-receipt', authenticateToken, async (req, res) => {
                                        .replace(/\n/g, '')
                                        .trim();
                 rootCertificates = [Buffer.from(certString, 'base64')];
-                environment = Environment.LOCAL_TESTING;
+                environment = Environment.XCODE;
             } else {
                 // Otherwise use Apple's Root CAs for real Sandbox/Production
                 const certsDir = path.join(__dirname, 'certs');
