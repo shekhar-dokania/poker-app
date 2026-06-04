@@ -1,6 +1,10 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { SignedDataVerifier, Environment } = require('@apple/app-store-server-library');
+const AppConfig = require('../shared/AppConfig');
+const fs = require('fs');
+const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
@@ -49,24 +53,100 @@ router.get('/me', authenticateToken, async (req, res) => {
     }
 });
 
-// Buy Coins Mock Endpoint
-router.post('/buy-coins', authenticateToken, async (req, res) => {
+// Verify Apple StoreKit Receipt
+router.post('/verify-receipt', authenticateToken, async (req, res) => {
     try {
-        const { productId } = req.body;
-        // Mock purchase mapping
-        let amount = 100;
-        if (productId === 'com.mayhempoker.coins.500') amount = 500;
-        if (productId === 'com.mayhempoker.coins.1000') amount = 1000;
+        const { transactionId, productId, jwsRepresentation } = req.body;
+        
+        let verifiedProductId = productId;
+        let verifiedTransactionId = transactionId;
+        
+        try {
+            const bundleId = process.env.BUNDLE_ID || 'com.mayhempoker.app';
+            const appAppleId = parseInt(process.env.APP_APPLE_ID || '0');
+            
+            let rootCertificates = [];
+            let environment;
+            
+            // If the user injected a local Xcode Certificate, use LOCAL_TESTING
+            if (process.env.XCODE_PUBLIC_CERTIFICATE) {
+                let certString = process.env.XCODE_PUBLIC_CERTIFICATE;
+                certString = certString.replace(/-----BEGIN CERTIFICATE-----/g, '')
+                                       .replace(/-----END CERTIFICATE-----/g, '')
+                                       .replace(/\n/g, '')
+                                       .trim();
+                rootCertificates = [Buffer.from(certString, 'base64')];
+                environment = Environment.LOCAL_TESTING;
+            } else {
+                // Otherwise use Apple's Root CAs for real Sandbox/Production
+                const certsDir = path.join(__dirname, 'certs');
+                rootCertificates = [
+                    fs.readFileSync(path.join(certsDir, 'AppleComputerRootCertificate.cer')),
+                    fs.readFileSync(path.join(certsDir, 'AppleRootCA-G2.cer')),
+                    fs.readFileSync(path.join(certsDir, 'AppleRootCA-G3.cer')),
+                    fs.readFileSync(path.join(certsDir, 'AppleRootCA-G4.cer'))
+                ];
+                environment = process.env.NODE_ENV === 'production' ? Environment.PRODUCTION : Environment.SANDBOX;
+            }
+            
+            const verifier = new SignedDataVerifier(
+                rootCertificates, 
+                false, 
+                environment, 
+                bundleId, 
+                appAppleId
+            );
+            
+            const verifiedPayload = await verifier.verifyAndDecodeTransaction(jwsRepresentation);
+            verifiedProductId = verifiedPayload.productId;
+            verifiedTransactionId = verifiedPayload.transactionId;
+            
+        } catch (verifyError) {
+            console.error("Apple Verification Failed:", verifyError);
+            return res.status(401).json({ error: "Invalid App Store receipt signature." });
+        }
 
-        const user = await prisma.user.update({
-            where: { id: req.user.userId },
-            data: { coins: { increment: amount } }
+        // Check if transaction was already processed
+        const existingReceipt = await prisma.purchaseReceipt.findUnique({
+            where: { transactionId: String(verifiedTransactionId) }
         });
+        
+        if (existingReceipt) {
+            // Already processed, just return success
+            const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+            return res.json({ success: true, coins: user.coins, duplicate: true });
+        }
+
+        // Map product ID to coin amount
+        let amount = 0;
+        if (verifiedProductId === 'com.mayhempoker.coins.100') amount = 100;
+        if (verifiedProductId === 'com.mayhempoker.coins.500') amount = 500;
+        if (verifiedProductId === 'com.mayhempoker.coins.1000') amount = 1000;
+        
+        if (amount === 0) {
+            return res.status(400).json({ error: 'Invalid product ID' });
+        }
+
+        // Transactionally grant coins and record receipt
+        const [receipt, user] = await prisma.$transaction([
+            prisma.purchaseReceipt.create({
+                data: {
+                    transactionId: String(verifiedTransactionId),
+                    userId: req.user.userId,
+                    productId: verifiedProductId,
+                    amount
+                }
+            }),
+            prisma.user.update({
+                where: { id: req.user.userId },
+                data: { coins: { increment: amount } }
+            })
+        ]);
         
         res.json({ success: true, coins: user.coins });
     } catch (error) {
-        console.error("Buy Coins Error:", error);
-        res.status(500).json({ error: 'Failed to purchase coins' });
+        console.error("Verify Receipt Error:", error);
+        res.status(500).json({ error: 'Failed to verify receipt' });
     }
 });
 

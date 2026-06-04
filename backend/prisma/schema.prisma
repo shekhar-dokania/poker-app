@@ -28,6 +28,7 @@ model User {
   ledger       LedgerEntry[]
   ownedClubs   Club[]          @relation("ClubOwner")
   memberships  ClubMember[]
+  purchases    PurchaseReceipt[]
 }
 
 model GameSession {
@@ -87,4 +88,14 @@ model ClubMember {
   joinedAt    DateTime @default(now())
 
   @@unique([clubId, userId]) // Prevent duplicate requests
+}
+
+model PurchaseReceipt {
+  id            String   @id @default(uuid())
+  transactionId String   @unique
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  productId     String
+  amount        Int
+  createdAt     DateTime @default(now())
 }

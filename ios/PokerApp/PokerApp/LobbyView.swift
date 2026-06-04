@@ -58,18 +58,28 @@ struct LobbyView: View {
                     }
                     .disabled(!authManager.canClaimDailyCoins)
                     
-                    Button(action: {
-                        storeManager.purchaseCoins(productId: "com.mayhempoker.coins.500") { success in
-                            if success {
-                                print("Successfully purchased 500 coins!")
-                            } else {
-                                print("Purchase failed: \(storeManager.lastPurchaseError ?? "Unknown")")
+                    Menu {
+                        ForEach(storeManager.availableProducts, id: \.id) { product in
+                            Button(action: {
+                                storeManager.purchaseCoins(product: product) { success in
+                                    if success {
+                                        print("Successfully purchased \(product.displayName)!")
+                                    } else {
+                                        print("Purchase failed: \(storeManager.lastPurchaseError ?? "Unknown")")
+                                    }
+                                }
+                            }) {
+                                HStack {
+                                    Text(product.displayName)
+                                    Spacer()
+                                    Text(product.displayPrice)
+                                }
                             }
                         }
-                    }) {
+                    } label: {
                         HStack {
-                            Image(systemName: "plus.circle.fill")
-                            Text("Buy 500 Coins")
+                            Image(systemName: "cart.fill")
+                            Text("Store")
                         }
                         .font(.caption)
                         .padding(6)
