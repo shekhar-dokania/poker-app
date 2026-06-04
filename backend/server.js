@@ -6,6 +6,7 @@ const RoomManager = require('./RoomManager');
 const ClubManager = require('./ClubManager');
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json()); // Added for body parsing
 
