@@ -203,7 +203,7 @@ class PokerGame {
     this.communityCards = [];
     this.pot = 0;
     this.currentHighestBet = 0;
-    this.deck = [];
+    this.deck = new Deck();
     this.winnerInfo = null;
     this.runItTwicePromptStartTime = null;
     this.runItTwiceData = null;
