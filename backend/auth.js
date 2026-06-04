@@ -76,6 +76,23 @@ router.post('/claim-free-coins', authenticateToken, async (req, res) => {
     }
 });
 
+// Mock Buy Coins Endpoint
+router.post('/buy-coins-mock', authenticateToken, async (req, res) => {
+    try {
+        const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        
+        const updatedUser = await prisma.user.update({
+            where: { id: user.id },
+            data: { coins: user.coins + 100 }
+        });
+        
+        res.json({ success: true, coins: updatedUser.coins });
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Avatar Update Endpoint
 router.post('/avatar', authenticateToken, async (req, res) => {
     try {

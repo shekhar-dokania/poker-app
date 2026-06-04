@@ -61,10 +61,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('extendRoomTime', async (data, callback) => {
+  socket.on('resumeRoom', async (data, callback) => {
      try {
-         const { roomCode, additionalHours } = data;
-         await roomManager.extendRoomTime(roomCode, socket.user, additionalHours);
+         const { roomCode } = data;
+         await roomManager.resumeRoom(roomCode, socket.user);
          callback({ success: true });
      } catch (err) {
          callback({ success: false, message: err.message });

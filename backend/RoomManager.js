@@ -55,16 +55,27 @@ class RoomManager {
   async processTimeouts() {
       const now = Date.now();
       
-      const expiredHostingRooms = await redis.zRangeByScore('room_expirations', 0, now);
-      for (const roomCode of expiredHostingRooms) {
-          await redis.zRem('room_expirations', roomCode);
+      const roomsToBill = await redis.zRangeByScore('room_billing', 0, now);
+      for (const roomCode of roomsToBill) {
           await this.withRoomLock(roomCode, false, async (room) => {
-              if (room.game.stage === 'waiting' || room.game.stage === 'showdown') {
-                  await this.finalizeTableInternal(room);
+              if (!room) {
+                  await redis.zRem('room_billing', roomCode);
+                  return;
+              }
+              const hostId = room.host;
+              const host = await prisma.user.findUnique({ where: { id: hostId } });
+              
+              if (host && host.coins > 0) {
+                  // Deduct 1 coin and schedule next billing
+                  await prisma.user.update({ where: { id: hostId }, data: { coins: { decrement: 1 } } });
+                  await redis.zAdd('room_billing', [{ score: now + 60000, value: roomCode }]);
               } else {
-                  room.pendingTableEnd = true;
+                  // Out of coins, pause the table
+                  console.log(`Pausing room ${roomCode} - host out of coins`);
+                  room.isPaused = true;
                   await this.saveRoom(room);
                   this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
+                  await redis.zRem('room_billing', roomCode);
               }
           });
       }
@@ -297,21 +308,12 @@ class RoomManager {
   async createRoom(user, gameType, settings, socket, clubId = null) {
     if (this.isShuttingDown) throw new Error("Server is shutting down. Cannot create new rooms.");
     
-    // Monetization
-    const durationHours = settings.durationHours || 1;
-    const cost = durationHours * 10;
-    
+    // Check if host has at least 1 coin to start
     const dbUser = await prisma.user.findUnique({ where: { id: user.userId } });
-    if (dbUser.coins < cost) {
-        throw new Error(`Insufficient coins to host for ${durationHours} hour(s). You need ${cost} Mayhem Coins.`);
+    if (dbUser.coins < 1) {
+        throw new Error(`Insufficient coins to host. You need at least 1 Mayhem Coin to start.`);
     }
     
-    await prisma.user.update({
-        where: { id: user.userId },
-        data: { coins: { decrement: cost } }
-    });
-    
-    const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000);
     const roomCode = await this.generateRoomCode();
     
     const dbSession = await prisma.gameSession.create({
@@ -319,8 +321,7 @@ class RoomManager {
             roomCode,
             hostId: user.userId,
             clubId: clubId,
-            settings: settings,
-            expiresAt: expiresAt
+            settings: settings
         }
     });
 
@@ -330,51 +331,41 @@ class RoomManager {
       host: user.userId, 
       clubId: clubId, 
       createdAt: Date.now(),
-      expiresAt: expiresAt.getTime(),
       gameType: gameType || 'holdem',
       players: [],
       settings: settings || { smallBlind: 1, bigBlind: 2, minBuyIn: 100, maxBuyIn: 10000 },
       game: new PokerGame(gameType, settings || {}),
-      pendingTableEnd: false
+      pendingTableEnd: false,
+      isPaused: false
     };
     
     await this.saveRoom(newRoom);
-    await redis.zAdd('room_expirations', [{ score: expiresAt.getTime(), value: roomCode }]);
+    await redis.zAdd('room_billing', [{ score: Date.now() + 60000, value: roomCode }]);
     await this.addUserRoom(user.userId, roomCode);
     await this.joinRoom(roomCode, user, socket);
     return roomCode;
   }
 
-  async extendRoomTime(roomCode, user, additionalHours) {
+  async resumeRoom(roomCode, user) {
       const lock = this.getLock(roomCode);
       return await lock.runExclusive(async () => {
          const room = await this.getRoom(roomCode);
          if (!room) throw new Error("Room not found");
-         if (room.host !== user.userId) throw new Error("Only host can extend time");
+         if (room.host !== user.userId) throw new Error("Only host can resume table");
          
-         const cost = additionalHours * 10;
          const dbUser = await prisma.user.findUnique({ where: { id: user.userId } });
-         if (dbUser.coins < cost) throw new Error(`Insufficient coins. You need ${cost} Mayhem Coins.`);
+         if (dbUser.coins < 1) throw new Error(`Insufficient coins. You need at least 1 Mayhem Coin to resume.`);
          
-         await prisma.user.update({
-             where: { id: user.userId },
-             data: { coins: { decrement: cost } }
-         });
-         
-         const currentExpiresAt = new Date(room.expiresAt || Date.now());
-         const newExpiresAt = new Date(currentExpiresAt.getTime() + additionalHours * 60 * 60 * 1000);
-         room.expiresAt = newExpiresAt.getTime();
-         
-         await prisma.gameSession.update({
-             where: { id: room.sessionId },
-             data: { expiresAt: newExpiresAt }
-         });
-         
+         room.isPaused = false;
          await this.saveRoom(room);
-         await redis.zAdd('room_expirations', [{ score: room.expiresAt, value: roomCode }]);
+         await redis.zAdd('room_billing', [{ score: Date.now() + 60000, value: roomCode }]);
+         
          this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
          
-         return true;
+         // Try to start hand if there are enough players
+         await this.startNextHandInternal(room);
+         
+         return { success: true };
       });
   }
 
@@ -596,6 +587,11 @@ class RoomManager {
           }
       });
       
+      if (room.isPaused) {
+          console.log(`Cannot start next hand in room ${room.code} - paused for coins`);
+          return;
+      }
+      
       const success = room.game.startGame();
       if (success) {
          await this.saveRoom(room);
@@ -629,6 +625,10 @@ class RoomManager {
             }
         });
 
+        if (room.isPaused) {
+            throw new Error("Table is paused due to insufficient coins. Please top up.");
+        }
+        
         const success = room.game.startGame();
         if (success) {
            await this.saveRoom(room);
@@ -676,6 +676,7 @@ class RoomManager {
       createdAt: room.createdAt,
       settings: room.settings,
       pendingTableEnd: room.pendingTableEnd,
+      isPaused: room.isPaused,
       players: room.players.map(p => {
           const gp = room.game.players.find(gameP => gameP.id === p.id);
           return { id: p.id, name: p.name, chips: p.chips, cashedOutChips: p.cashedOutChips || 0, connected: p.connected, isSittingOut: gp ? gp.isSittingOut : false };
