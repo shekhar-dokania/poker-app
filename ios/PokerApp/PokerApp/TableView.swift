@@ -22,6 +22,16 @@ struct TableView: View {
     @State private var localReceiptTime: Double = Date().timeIntervalSince1970
     let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
     
+    private var maxReloadAllowed: Double {
+        let maxBuyInLimit = Double(socketManager.roomSettings?["maxBuyIn"] as? Int ?? 10000)
+        let myGameStatePlayer = (socketManager.gameState?["players"] as? [[String: Any]])?.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })
+        let myCurrentChips = myGameStatePlayer?["chips"] as? Int ?? 0
+        let myPotContribution = myGameStatePlayer?["potContribution"] as? Int ?? 0
+        let myQueuedReload = myGameStatePlayer?["queuedReload"] as? Int ?? 0
+        let myTotalCurrentChips = myCurrentChips + myPotContribution + myQueuedReload
+        return max(0.0, maxBuyInLimit - Double(myTotalCurrentChips))
+    }
+    
     var body: some View {
         ZStack(alignment: .trailing) {
             VStack(spacing: 0) {
@@ -116,6 +126,28 @@ struct TableView: View {
                                     .font(.subheadline)
                                     .foregroundColor(.gray)
                                     .multilineTextAlignment(.center)
+                                
+                                if socketManager.isHost && authManager.coins <= 0 {
+                                    Button(action: {
+                                        StoreManager.shared.purchaseCoins(productId: "com.mayhempoker.coins.500") { success in
+                                            if success {
+                                                print("Top up successful!")
+                                            }
+                                        }
+                                    }) {
+                                        HStack {
+                                            Image(systemName: "plus.circle.fill")
+                                            Text("Top Up Coins")
+                                        }
+                                        .fontWeight(.bold)
+                                        .padding(.horizontal, 20)
+                                        .padding(.vertical, 10)
+                                        .background(Color.green)
+                                        .foregroundColor(.white)
+                                        .cornerRadius(10)
+                                    }
+                                    .padding(.top, 5)
+                                }
                             }
                             .padding(20)
                             .background(Color.black.opacity(0.85))
@@ -364,9 +396,7 @@ struct TableView: View {
                                 let myQueuedReload = myGameStatePlayer?["queuedReload"] as? Int ?? 0
                                 let myTotalCurrentChips = myCurrentChips + myPotContribution + myQueuedReload
                                 
-                                let maxReloadAllowed = max(0.0, maxBuyInLimit - Double(myTotalCurrentChips))
-                                
-                                if maxReloadAllowed <= 0 {
+                                if self.maxReloadAllowed <= 0 {
                                     Text("You are already at or above the maximum buy-in limit.")
                                         .font(.subheadline)
                                         .foregroundColor(.orange)
@@ -380,15 +410,15 @@ struct TableView: View {
                                         .cornerRadius(8)
                                         .padding(.horizontal)
                                 } else {
-                                    let minBuyInLimit = min(Double(socketManager.roomSettings?["minBuyIn"] as? Int ?? 100), maxReloadAllowed)
-                                    let safeAmount = min(max(reloadAmount, minBuyInLimit), maxReloadAllowed)
+                                    let minBuyInLimit = min(Double(socketManager.roomSettings?["minBuyIn"] as? Int ?? 100), self.maxReloadAllowed)
+                                    let safeAmount = min(max(reloadAmount, minBuyInLimit), self.maxReloadAllowed)
                                     
                                     HStack(spacing: 8) {
                                         Button("Min") { reloadAmount = minBuyInLimit }
                                             .buttonStyle(ShortcutButtonStyle())
-                                        Button("Half") { reloadAmount = min(maxReloadAllowed, max(minBuyInLimit, maxReloadAllowed / 2)) }
+                                        Button("Half") { reloadAmount = min(self.maxReloadAllowed, max(minBuyInLimit, self.maxReloadAllowed / 2)) }
                                             .buttonStyle(ShortcutButtonStyle())
-                                        Button("Max") { reloadAmount = maxReloadAllowed }
+                                        Button("Max") { reloadAmount = self.maxReloadAllowed }
                                             .buttonStyle(ShortcutButtonStyle())
                                     }
                                     
@@ -405,13 +435,13 @@ struct TableView: View {
                                         Slider(value: Binding(
                                             get: { safeAmount },
                                             set: { reloadAmount = $0 }
-                                        ), in: minBuyInLimit...maxReloadAllowed, step: 1)
+                                        ), in: minBuyInLimit...self.maxReloadAllowed, step: 1)
                                             .accentColor(.green)
                                     }
                                 }
                             }
                             .padding(.horizontal)
-                            if (max(0.0, Double(socketManager.roomSettings?["maxBuyIn"] as? Int ?? 10000) - Double((socketManager.gameState?["players"] as? [[String: Any]])?.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })?["chips"] as? Int ?? 0) - Double((socketManager.gameState?["players"] as? [[String: Any]])?.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })?["potContribution"] as? Int ?? 0) - Double((socketManager.gameState?["players"] as? [[String: Any]])?.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })?["queuedReload"] as? Int ?? 0)) > 0) {
+                            if self.maxReloadAllowed > 0 {
                                 HStack(spacing: 16) {
                                     Button("Cancel") { showReloadPanel = false }
                                         .padding(.horizontal, 20)
@@ -426,9 +456,8 @@ struct TableView: View {
                                         let myPotContribution = myGameStatePlayer?["potContribution"] as? Int ?? 0
                                         let myQueuedReload = myGameStatePlayer?["queuedReload"] as? Int ?? 0
                                         let myTotalCurrentChips = myCurrentChips + myPotContribution + myQueuedReload
-                                        let maxReloadAllowed = max(0.0, maxBuyInLimit - Double(myTotalCurrentChips))
-                                        let minBuyInLimit = min(Double(socketManager.roomSettings?["minBuyIn"] as? Int ?? 100), maxReloadAllowed)
-                                        let safeAmount = min(max(reloadAmount, minBuyInLimit), maxReloadAllowed)
+                                        let minBuyInLimit = min(Double(socketManager.roomSettings?["minBuyIn"] as? Int ?? 100), self.maxReloadAllowed)
+                                        let safeAmount = min(max(reloadAmount, minBuyInLimit), self.maxReloadAllowed)
                                         socketManager.reloadChips(amount: Int(safeAmount))
                                         showReloadPanel = false
                                     }
@@ -668,40 +697,6 @@ struct TableView: View {
                         
                         let isPaused = socketManager.roomState?["isPaused"] as? Bool ?? false
                         let canResume = !isPaused || authManager.coins > 0
-                        HStack(spacing: 20) {
-                            Button(action: {
-                                socketManager.resumeTable()
-                            }) {
-                                Text("Resume Table")
-                                    .fontWeight(.bold)
-                                    .padding()
-                                    .frame(maxWidth: .infinity)
-                                    .background(canResume ? Color.blue : Color.gray)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(10)
-                            }
-                            .disabled(!canResume)
-
-                            if !canResume {
-                                Button(action: {
-                                    StoreManager.shared.purchaseCoins(productId: "com.mayhempoker.coins.500") { success in
-                                        if success {
-                                            print("Top up successful!")
-                                        }
-                                    }
-                                }) {
-                                    HStack {
-                                        Image(systemName: "plus.circle.fill")
-                                        Text("Top Up")
-                                    }
-                                    .fontWeight(.bold)
-                                    .padding()
-                                    .background(Color.green)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(10)
-                                }
-                            }
-                        }
                         
                         Button(action: {
                             socketManager.togglePauseRoom()

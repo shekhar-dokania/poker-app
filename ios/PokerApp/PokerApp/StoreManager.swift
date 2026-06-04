@@ -10,7 +10,7 @@ class StoreManager: ObservableObject {
     // In the future, this will hook into Apple's StoreKit.
     // For now, it makes a direct API call to the mock backend endpoint.
     func purchaseCoins(productId: String, completion: @escaping (Bool) -> Void) {
-        guard let token = UserDefaults.standard.string(forKey: "authToken") else {
+        guard let token = AuthManager.shared.jwtToken else {
             self.lastPurchaseError = "Not authenticated"
             completion(false)
             return
