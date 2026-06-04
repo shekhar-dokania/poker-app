@@ -43,7 +43,34 @@ router.get('/me', authenticateToken, async (req, res) => {
     try {
         const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
         if (!user) return res.status(404).json({ error: 'User not found' });
-        res.json({ success: true, user: { id: user.id, username: user.username, avatar: user.avatar } });
+        res.json({ success: true, user: { id: user.id, username: user.username, avatar: user.avatar, coins: user.coins, lastFreeClaim: user.lastFreeClaim } });
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Claim Free Coins Endpoint
+router.post('/claim-free-coins', authenticateToken, async (req, res) => {
+    try {
+        const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        
+        const now = new Date();
+        const ONE_DAY = 24 * 60 * 60 * 1000;
+        
+        if (user.lastFreeClaim && (now.getTime() - user.lastFreeClaim.getTime() < ONE_DAY)) {
+            return res.status(400).json({ error: 'You have already claimed your free coins today.' });
+        }
+        
+        const updatedUser = await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                coins: user.coins + 10,
+                lastFreeClaim: now
+            }
+        });
+        
+        res.json({ success: true, coins: updatedUser.coins, lastFreeClaim: updatedUser.lastFreeClaim });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
     }

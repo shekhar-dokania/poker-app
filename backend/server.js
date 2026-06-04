@@ -61,6 +61,16 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('extendRoomTime', async (data, callback) => {
+     try {
+         const { roomCode, additionalHours } = data;
+         await roomManager.extendRoomTime(roomCode, socket.user, additionalHours);
+         callback({ success: true });
+     } catch (err) {
+         callback({ success: false, message: err.message });
+     }
+  });
+
   socket.on('joinRoom', async (data, callback) => {
     try {
       const roomInfo = await roomManager.joinRoom(data.roomCode, socket.user, socket);

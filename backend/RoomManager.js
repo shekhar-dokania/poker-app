@@ -54,6 +54,21 @@ class RoomManager {
 
   async processTimeouts() {
       const now = Date.now();
+      
+      const expiredHostingRooms = await redis.zRangeByScore('room_expirations', 0, now);
+      for (const roomCode of expiredHostingRooms) {
+          await redis.zRem('room_expirations', roomCode);
+          await this.withRoomLock(roomCode, false, async (room) => {
+              if (room.game.stage === 'waiting' || room.game.stage === 'showdown') {
+                  await this.finalizeTableInternal(room);
+              } else {
+                  room.pendingTableEnd = true;
+                  await this.saveRoom(room);
+                  this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
+              }
+          });
+      }
+
       const expiredRooms = await redis.zRangeByScore('room_turn_timeouts', 0, now);
       for (const roomCode of expiredRooms) {
           await this.withRoomLock(roomCode, false, async (room) => {
@@ -281,6 +296,22 @@ class RoomManager {
 
   async createRoom(user, gameType, settings, socket, clubId = null) {
     if (this.isShuttingDown) throw new Error("Server is shutting down. Cannot create new rooms.");
+    
+    // Monetization
+    const durationHours = settings.durationHours || 1;
+    const cost = durationHours * 10;
+    
+    const dbUser = await prisma.user.findUnique({ where: { id: user.userId } });
+    if (dbUser.coins < cost) {
+        throw new Error(`Insufficient coins to host for ${durationHours} hour(s). You need ${cost} Mayhem Coins.`);
+    }
+    
+    await prisma.user.update({
+        where: { id: user.userId },
+        data: { coins: { decrement: cost } }
+    });
+    
+    const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000);
     const roomCode = await this.generateRoomCode();
     
     const dbSession = await prisma.gameSession.create({
@@ -288,7 +319,8 @@ class RoomManager {
             roomCode,
             hostId: user.userId,
             clubId: clubId,
-            settings: settings
+            settings: settings,
+            expiresAt: expiresAt
         }
     });
 
@@ -298,6 +330,7 @@ class RoomManager {
       host: user.userId, 
       clubId: clubId, 
       createdAt: Date.now(),
+      expiresAt: expiresAt.getTime(),
       gameType: gameType || 'holdem',
       players: [],
       settings: settings || { smallBlind: 1, bigBlind: 2, minBuyIn: 100, maxBuyIn: 10000 },
@@ -306,9 +339,43 @@ class RoomManager {
     };
     
     await this.saveRoom(newRoom);
+    await redis.zAdd('room_expirations', [{ score: expiresAt.getTime(), value: roomCode }]);
     await this.addUserRoom(user.userId, roomCode);
     await this.joinRoom(roomCode, user, socket);
     return roomCode;
+  }
+
+  async extendRoomTime(roomCode, user, additionalHours) {
+      const lock = this.getLock(roomCode);
+      return await lock.runExclusive(async () => {
+         const room = await this.getRoom(roomCode);
+         if (!room) throw new Error("Room not found");
+         if (room.host !== user.userId) throw new Error("Only host can extend time");
+         
+         const cost = additionalHours * 10;
+         const dbUser = await prisma.user.findUnique({ where: { id: user.userId } });
+         if (dbUser.coins < cost) throw new Error(`Insufficient coins. You need ${cost} Mayhem Coins.`);
+         
+         await prisma.user.update({
+             where: { id: user.userId },
+             data: { coins: { decrement: cost } }
+         });
+         
+         const currentExpiresAt = new Date(room.expiresAt || Date.now());
+         const newExpiresAt = new Date(currentExpiresAt.getTime() + additionalHours * 60 * 60 * 1000);
+         room.expiresAt = newExpiresAt.getTime();
+         
+         await prisma.gameSession.update({
+             where: { id: room.sessionId },
+             data: { expiresAt: newExpiresAt }
+         });
+         
+         await this.saveRoom(room);
+         await redis.zAdd('room_expirations', [{ score: room.expiresAt, value: roomCode }]);
+         this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
+         
+         return true;
+      });
   }
 
   async joinRoom(roomCode, user, socket) {

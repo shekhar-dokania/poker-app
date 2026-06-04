@@ -159,7 +159,23 @@ class PokerSocketManager: ObservableObject {
                 DispatchQueue.main.async {
                     self.currentRoom = roomCode
                     self.isHost = true
+                    AuthManager.shared.fetchMe() // Refresh coins
                 }
+            }
+        }
+    }
+    
+    func extendRoomTime(additionalHours: Int) {
+        guard let code = currentRoom else { return }
+        let data: [String: Any] = ["roomCode": code, "additionalHours": additionalHours]
+        socket.emitWithAck("extendRoomTime", data).timingOut(after: 2) { data in
+            if let response = data.first as? [String: Any],
+               let success = response["success"] as? Bool,
+               success {
+                AuthManager.shared.fetchMe() // Refresh coins
+            } else {
+                let msg = (data.first as? [String: Any])?["message"] as? String ?? "Failed"
+                print("Extend room time failed: \(msg)")
             }
         }
     }

@@ -22,6 +22,8 @@ model User {
   resetTokenExpiry DateTime?
   totalProfit      Int             @default(0)
   avatar           String          @default("👽")
+  coins            Int             @default(0)
+  lastFreeClaim    DateTime?
   sessions     GameSession[]
   ledger       LedgerEntry[]
   ownedClubs   Club[]          @relation("ClubOwner")
@@ -38,6 +40,7 @@ model GameSession {
   status       String          @default("active") // "active", "ended"
   settings     Json
   createdAt    DateTime        @default(now())
+  expiresAt    DateTime?
   endedAt      DateTime?
   ledger       LedgerEntry[]
   hands        HandHistory[]

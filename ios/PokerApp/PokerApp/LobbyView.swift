@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LobbyView: View {
     @ObservedObject private var socketManager = PokerSocketManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @AppStorage("username") var storedUsername: String = ""
     @State private var roomCodeToJoin = ""
     @State private var selectedGameType = "holdem"
@@ -10,6 +11,7 @@ struct LobbyView: View {
     @State private var maxBuyIn: Double = 10000
     @State private var showSettings: Bool = false
     @State private var selectedPastGame: [String: Any]? = nil
+    @State private var durationHours: Double = 1.0
     
     
     func parseInt(_ value: Any?) -> Int {
@@ -31,6 +33,30 @@ struct LobbyView: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
+                
+                HStack {
+                    Text("Mayhem Coins: \(authManager.coins)")
+                        .font(.headline)
+                        .foregroundColor(.yellow)
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        authManager.claimFreeCoins { success, error in
+                            if let err = error {
+                                print("Claim error:", err)
+                            }
+                        }
+                    }) {
+                        Text("Claim Daily Free 10")
+                            .font(.caption)
+                            .padding(6)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                    }
+                }
+                .padding(.horizontal)
                 
                 if !socketManager.myRooms.isEmpty {
                     Divider()
@@ -120,6 +146,13 @@ struct LobbyView: View {
                                 Text("Max Buy-In: \(Int(maxBuyIn))").frame(width: 120, alignment: .leading)
                                 Slider(value: $maxBuyIn, in: 10...50000, step: 10)
                             }
+                            HStack {
+                                Text("Duration: \(Int(durationHours)) hr").frame(width: 120, alignment: .leading)
+                                Slider(value: $durationHours, in: 1...12, step: 1)
+                            }
+                            Text("Cost: \(Int(durationHours * 10)) Coins")
+                                .font(.caption)
+                                .foregroundColor(authManager.coins >= Int(durationHours * 10) ? .secondary : .red)
                         }
                         .padding(.horizontal)
                     }
@@ -130,7 +163,8 @@ struct LobbyView: View {
                                 "smallBlind": Int(smallBlind),
                                 "bigBlind": Int(smallBlind) * 2,
                                 "minBuyIn": Int(minBuyIn),
-                                "maxBuyIn": max(Int(minBuyIn), Int(maxBuyIn))
+                                "maxBuyIn": max(Int(minBuyIn), Int(maxBuyIn)),
+                                "durationHours": Int(durationHours)
                             ]
                             socketManager.createRoom(hostName: storedUsername, gameType: selectedGameType, settings: settings)
                         }
@@ -138,12 +172,12 @@ struct LobbyView: View {
                         Text("Create Room")
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.blue)
+                            .background(authManager.coins >= Int(durationHours * 10) ? Color.blue : Color.gray)
                             .foregroundColor(.white)
                             .cornerRadius(10)
                     }
                     .padding(.horizontal)
-                    .disabled(storedUsername.isEmpty)
+                    .disabled(storedUsername.isEmpty || authManager.coins < Int(durationHours * 10))
                 }
                 
                 Divider()

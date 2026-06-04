@@ -3,6 +3,7 @@ import Combine
 
 struct TableView: View {
     @StateObject private var socketManager = PokerSocketManager.shared
+    @ObservedObject private var authManager = AuthManager.shared
     @State private var raiseAmount: Double = 20
     @State private var isSittingOut: Bool = false
     @State private var lastToggleTime: Date = Date.distantPast
@@ -14,6 +15,7 @@ struct TableView: View {
     @State private var setMinBuyIn: Double = 100
     @State private var setMaxBuyIn: Double = 10000
     @State private var setTurnTimeLimit: Double = 30
+    @State private var extendHours: Double = 1.0
     @State private var showSideMenu: Bool = false
     @State private var showLedgerModal: Bool = false
     @State private var showHandHistoryModal: Bool = false
@@ -28,7 +30,11 @@ struct TableView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Room: \(socketManager.currentRoom ?? "")")
                         .font(.headline)
-                    if socketManager.roomState?["createdAt"] != nil {
+                    if let remaining = getTimeRemaining() {
+                        Text("Remaining: \(remaining)")
+                            .font(.caption)
+                            .foregroundColor(remaining == "Expired" ? .red : .green)
+                    } else if socketManager.roomState?["createdAt"] != nil {
                         Text("Running: \(getElapsedTime())")
                             .font(.caption)
                             .foregroundColor(.gray)
@@ -992,6 +998,23 @@ struct TableView: View {
                         }
                     }
                     
+                    Section(header: Text("Hosting Time")) {
+                        HStack {
+                            Text("Extend: \(Int(extendHours)) hr").frame(width: 120, alignment: .leading)
+                            Slider(value: $extendHours, in: 1...12, step: 1)
+                        }
+                        HStack {
+                            Text("Cost: \(Int(extendHours * 10)) Coins")
+                                .foregroundColor(authManager.coins >= Int(extendHours * 10) ? .secondary : .red)
+                            Spacer()
+                            Button("Buy Time") {
+                                socketManager.extendRoomTime(additionalHours: Int(extendHours))
+                                showHostSettings = false
+                            }
+                            .disabled(authManager.coins < Int(extendHours * 10))
+                        }
+                    }
+                    
                     Section(footer: Text("Changes will take effect at the start of the next hand.")) {
                         Button("Save Settings") {
                             let newSettings: [String: Any] = [
@@ -1038,6 +1061,20 @@ struct TableView: View {
             return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
         }
         return String(format: "%02d:%02d", minutes, seconds)
+    }
+    
+    private func getTimeRemaining() -> String? {
+        guard let roomState = socketManager.roomState,
+              let expiresAt = roomState["expiresAt"] as? Double else { return nil }
+        let remaining = (expiresAt / 1000.0) - currentTime
+        if remaining <= 0 { return "Expired" }
+        let hours = Int(remaining) / 3600
+        let minutes = (Int(remaining) % 3600) / 60
+        let seconds = Int(remaining) % 60
+        if hours > 0 {
+            return String(format: "%02dh %02dm %02ds", hours, minutes, seconds)
+        }
+        return String(format: "%02dm %02ds", minutes, seconds)
     }
 }
 

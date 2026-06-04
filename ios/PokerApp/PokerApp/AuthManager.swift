@@ -8,6 +8,8 @@ class AuthManager: ObservableObject {
     @Published var jwtToken: String? = nil
     @Published var username: String = ""
     @Published var avatar: String = "👽"
+    @Published var coins: Int = 0
+    @Published var lastFreeClaim: String? = nil
     
     private let service = "com.pokerapp.auth"
     private let account = "jwt_token"
@@ -57,6 +59,8 @@ class AuthManager: ObservableObject {
                 DispatchQueue.main.async {
                     self.username = user["username"] as? String ?? self.username
                     self.avatar = user["avatar"] as? String ?? "👽"
+                    self.coins = user["coins"] as? Int ?? self.coins
+                    self.lastFreeClaim = user["lastFreeClaim"] as? String
                 }
             }
         }.resume()
@@ -81,6 +85,34 @@ class AuthManager: ObservableObject {
         }.resume()
     }
     
+    func claimFreeCoins(completion: @escaping (Bool, String?) -> Void) {
+        guard let token = jwtToken, let url = URL(string: "\(AppConfig.serverURL)/auth/claim-free-coins") else {
+            completion(false, "Invalid URL or Token")
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                DispatchQueue.main.async { completion(false, error.localizedDescription) }
+                return
+            }
+            if let data = data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                DispatchQueue.main.async {
+                    if let success = json["success"] as? Bool, success {
+                        self.coins = json["coins"] as? Int ?? self.coins
+                        self.lastFreeClaim = json["lastFreeClaim"] as? String
+                        completion(true, nil)
+                    } else {
+                        completion(false, json["error"] as? String ?? "Failed to claim coins")
+                    }
+                }
+            }
+        }.resume()
+    }
+
     func updateUsername(newUsername: String, completion: @escaping (Bool, String?) -> Void) {
         guard let token = jwtToken, let url = URL(string: "\(AppConfig.serverURL)/auth/username") else {
             completion(false, "Invalid URL or Token")
