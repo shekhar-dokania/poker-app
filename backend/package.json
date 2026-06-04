@@ -9,7 +9,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha game/*.test.js"
   },
   "keywords": [],
   "author": "",
@@ -29,5 +29,8 @@
     "redis": "^5.12.1",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "mocha": "^11.7.6"
   }
 }

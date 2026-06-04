@@ -30,6 +30,7 @@ function gameReducer(prevState, action) {
             break;
         }
         case ACTIONS.START_HAND:
+            if (!action.payload) action.payload = {};
             action.payload.success = game.startGame();
             break;
         case ACTIONS.PLAYER_ACTION:
