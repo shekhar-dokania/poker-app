@@ -19,6 +19,7 @@ struct TableView: View {
     @State private var showLedgerModal: Bool = false
     @State private var showHandHistoryModal: Bool = false
     @State private var currentTime: Double = Date().timeIntervalSince1970
+    @State private var localReceiptTime: Double = Date().timeIntervalSince1970
     let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
     
     var body: some View {
@@ -1062,16 +1063,27 @@ struct TableView: View {
                 }
             }
         }
+        .onReceive(socketManager.$roomState) { _ in
+            localReceiptTime = Date().timeIntervalSince1970
+        }
     }
     
     private func getElapsedTime() -> String {
-        guard let roomState = socketManager.roomState,
-              let createdAt = roomState["createdAt"] as? Double else { return "00:00" }
-        let elapsed = currentTime - (createdAt / 1000.0)
-        if elapsed < 0 { return "00:00" }
-        let hours = Int(elapsed) / 3600
-        let minutes = (Int(elapsed) % 3600) / 60
-        let seconds = Int(elapsed) % 60
+        guard let roomState = socketManager.roomState else { return "00:00" }
+        
+        let totalActiveMs = roomState["totalActiveTimeMs"] as? Double ?? 0
+        let isTimerRunning = roomState["isTimerRunning"] as? Bool ?? false
+        
+        var elapsedMs = totalActiveMs
+        if isTimerRunning {
+            elapsedMs += (currentTime - localReceiptTime) * 1000.0
+        }
+        
+        let totalSeconds = max(0, Int(elapsedMs / 1000.0))
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+        
         if hours > 0 {
             return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
         }

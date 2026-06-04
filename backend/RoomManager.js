@@ -67,6 +67,7 @@ class RoomManager {
               
               if (host && host.coins > 0) {
                   // Deduct 1 coin and schedule next billing
+                  room.totalActiveTimeMs = (room.totalActiveTimeMs || 0) + 60000;
                   const updatedHost = await prisma.user.update({ where: { id: hostId }, data: { coins: { decrement: 1 } } });
                   this.io.to(`user_${hostId}`).emit('profileUpdated', { coins: updatedHost.coins });
                   room.billingPartialMs = 0;
@@ -708,11 +709,20 @@ class RoomManager {
   async getRoomState(roomCode) {
     const room = await this.getRoom(roomCode);
     if (!room) return null;
+    const score = await redis.zScore('room_billing', roomCode);
+    let runningActiveMs = 0;
+    if (score) {
+        runningActiveMs = Math.max(0, 60000 - (score - Date.now()));
+    }
+    
     return {
       code: room.code,
       host: room.host,
       gameType: room.gameType,
       createdAt: room.createdAt,
+      totalActiveTimeMs: (room.totalActiveTimeMs || 0) + (room.billingPartialMs || 0) + runningActiveMs,
+      isTimerRunning: !!score,
+      serverTime: Date.now(),
       settings: room.settings,
       pendingTableEnd: room.pendingTableEnd,
       isPaused: room.isPaused,
