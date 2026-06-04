@@ -35,9 +35,12 @@ struct TableView: View {
                             .font(.caption)
                             .foregroundColor(remaining == "Expired" ? .red : .green)
                     } else if socketManager.roomState?["createdAt"] != nil {
-                        Text("Running: \(getElapsedTime())")
-                            .font(.caption)
-                            .foregroundColor(.gray)
+                        HStack(spacing: 8) {
+                            Text("Age: \(getTotalAge())")
+                            Text("Active: \(getActivePlayTime())")
+                        }
+                        .font(.caption)
+                        .foregroundColor(.gray)
                     }
                 }
                 Spacer()
@@ -1063,7 +1066,21 @@ struct TableView: View {
         }
     }
     
-    private func getElapsedTime() -> String {
+    private func getTotalAge() -> String {
+        guard let roomState = socketManager.roomState,
+              let createdAt = roomState["createdAt"] as? Double else { return "00:00" }
+        let elapsed = currentTime - (createdAt / 1000.0)
+        if elapsed < 0 { return "00:00" }
+        let hours = Int(elapsed) / 3600
+        let minutes = (Int(elapsed) % 3600) / 60
+        let seconds = Int(elapsed) % 60
+        if hours > 0 {
+            return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    private func getActivePlayTime() -> String {
         guard let roomState = socketManager.roomState else { return "00:00" }
         
         let totalActiveMs = roomState["totalActiveTimeMs"] as? Double ?? 0

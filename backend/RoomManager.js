@@ -621,6 +621,7 @@ class RoomManager {
              const partial = room.billingPartialMs || 0;
              const nextBillingMs = Math.max(0, 60000 - partial);
              await redis.zAdd('room_billing', [{ score: Date.now() + nextBillingMs, value: room.code }]);
+             room.billingPartialMs = 0;
          }
          await this.saveRoom(room);
          this.io.to(room.code).emit('gameState', room.game.getGameState());
@@ -673,6 +674,7 @@ class RoomManager {
                const partial = room.billingPartialMs || 0;
                const nextBillingMs = Math.max(0, 60000 - partial);
                await redis.zAdd('room_billing', [{ score: Date.now() + nextBillingMs, value: room.code }]);
+               room.billingPartialMs = 0;
            }
            await this.saveRoom(room);
            this.io.to(room.code).emit('gameState', room.game.getGameState());
