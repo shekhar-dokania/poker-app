@@ -149,6 +149,57 @@ router.post('/verify-receipt', authenticateToken, async (req, res) => {
     }
 });
 
+authRouter.post('/verify-play-receipt', authenticateToken, async (req, res) => {
+    const { purchaseToken, productId } = req.body;
+    
+    if (!purchaseToken || !productId) {
+        return res.status(400).json({ error: 'Missing purchase details' });
+    }
+
+    try {
+        // NOTE: In production, verify the purchaseToken with googleapis playdeveloper API
+        // For Sandbox/MVP we will just grant the coins if the token hasn't been used.
+
+        const existingReceipt = await prisma.purchaseReceipt.findUnique({
+            where: { transactionId: purchaseToken }
+        });
+        
+        if (existingReceipt) {
+            const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+            return res.json({ success: true, coins: user.coins });
+        }
+
+        let amount = 0;
+        if (productId === 'com.mayhempoker.coins.100') amount = 100;
+        if (productId === 'com.mayhempoker.coins.500') amount = 500;
+        if (productId === 'com.mayhempoker.coins.1000') amount = 1000;
+        
+        if (amount === 0) {
+            return res.status(400).json({ error: 'Invalid product ID' });
+        }
+
+        const [receipt, user] = await prisma.$transaction([
+            prisma.purchaseReceipt.create({
+                data: {
+                    transactionId: purchaseToken,
+                    userId: req.user.userId,
+                    productId: productId,
+                    amount
+                }
+            }),
+            prisma.user.update({
+                where: { id: req.user.userId },
+                data: { coins: { increment: amount } }
+            })
+        ]);
+        
+        res.json({ success: true, coins: user.coins });
+    } catch (error) {
+        console.error("Verify Play Receipt Error:", error);
+        res.status(500).json({ error: 'Failed to verify play receipt' });
+    }
+});
+
 // Claim Free Coins Endpoint
 router.post('/claim-free-coins', authenticateToken, async (req, res) => {
     try {

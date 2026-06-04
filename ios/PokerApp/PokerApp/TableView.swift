@@ -24,7 +24,7 @@ struct TableView: View {
     
     private var maxReloadAllowed: Double {
         let maxBuyInLimit = Double(socketManager.roomSettings?["maxBuyIn"] as? Int ?? 10000)
-        let myGameStatePlayer = (socketManager.gameState?["players"] as? [[String: Any]])?.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })
+        let myGameStatePlayer = (socketManager.gameState?["players"] as? [[String: Any]])?.first(where: { ($0["id"] as? String) == authManager.userId })
         let myCurrentChips = myGameStatePlayer?["chips"] as? Int ?? 0
         let myPotContribution = myGameStatePlayer?["potContribution"] as? Int ?? 0
         let myQueuedReload = myGameStatePlayer?["queuedReload"] as? Int ?? 0
@@ -258,7 +258,7 @@ struct TableView: View {
                     if let players = socketManager.gameState?["players"] as? [[String: Any]] {
                         let currentTurn = socketManager.gameState?["currentTurn"] as? Int ?? -1
                         let N = max(1, players.count)
-                        let myIndex = players.firstIndex(where: { ($0["name"] as? String) == socketManager.localPlayerName }) ?? 0
+                        let myIndex = players.firstIndex(where: { ($0["id"] as? String) == authManager.userId }) ?? 0
                         
                         ForEach(Array(players.enumerated()), id: \.offset) { index, player in
                             let isTurn = (index == currentTurn) && (socketManager.gameState?["stage"] as? String != "runItTwicePrompt") && (socketManager.gameState?["stage"] as? String != "handEnd") && (socketManager.gameState?["isAllInShowdown"] as? Bool != true) && (socketManager.gameState?["isRitShowdown"] as? Bool != true)
@@ -304,8 +304,8 @@ struct TableView: View {
             }    
             
             // Determine if the local player is seated in the game
-            let amISeated = (socketManager.gameState?["players"] as? [[String: Any]])?.contains(where: { ($0["name"] as? String) == socketManager.localPlayerName }) ?? false
-            let myRoomPlayer = (socketManager.roomState?["players"] as? [[String: Any]])?.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })
+            let amISeated = (socketManager.gameState?["players"] as? [[String: Any]])?.contains(where: { ($0["id"] as? String) == authManager.userId }) ?? false
+            let myRoomPlayer = (socketManager.roomState?["players"] as? [[String: Any]])?.first(where: { ($0["id"] as? String) == authManager.userId })
             let myCashedOutChips = myRoomPlayer?["cashedOutChips"] as? Int ?? 0
             
             if !amISeated {
@@ -390,7 +390,7 @@ struct TableView: View {
                                 .font(.headline)
                             VStack(spacing: 12) {
                                 let maxBuyInLimit = Double(socketManager.roomSettings?["maxBuyIn"] as? Int ?? 10000)
-                                let myGameStatePlayer = (socketManager.gameState?["players"] as? [[String: Any]])?.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })
+                                let myGameStatePlayer = (socketManager.gameState?["players"] as? [[String: Any]])?.first(where: { ($0["id"] as? String) == authManager.userId })
                                 let myCurrentChips = myGameStatePlayer?["chips"] as? Int ?? 0
                                 let myPotContribution = myGameStatePlayer?["potContribution"] as? Int ?? 0
                                 let myQueuedReload = myGameStatePlayer?["queuedReload"] as? Int ?? 0
@@ -451,7 +451,7 @@ struct TableView: View {
                                         .cornerRadius(8)
                                     Button("Confirm") {
                                         let maxBuyInLimit = Double(socketManager.roomSettings?["maxBuyIn"] as? Int ?? 10000)
-                                        let myGameStatePlayer = (socketManager.gameState?["players"] as? [[String: Any]])?.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })
+                                        let myGameStatePlayer = (socketManager.gameState?["players"] as? [[String: Any]])?.first(where: { ($0["id"] as? String) == authManager.userId })
                                         let myCurrentChips = myGameStatePlayer?["chips"] as? Int ?? 0
                                         let myPotContribution = myGameStatePlayer?["potContribution"] as? Int ?? 0
                                         let myQueuedReload = myGameStatePlayer?["queuedReload"] as? Int ?? 0
@@ -493,18 +493,18 @@ struct TableView: View {
                         guard let currentTurn = socketManager.gameState?["currentTurn"] as? Int,
                               let players = socketManager.gameState?["players"] as? [[String: Any]],
                               currentTurn >= 0 && currentTurn < players.count else { return false }
-                        return players[currentTurn]["name"] as? String == socketManager.localPlayerName
+                        return players[currentTurn]["id"] as? String == authManager.userId
                     }()
                     
                     let myBet: Int = {
                         guard let players = socketManager.gameState?["players"] as? [[String: Any]],
-                              let me = players.first(where: { $0["name"] as? String == socketManager.localPlayerName }) else { return 0 }
+                              let me = players.first(where: { $0["id"] as? String == authManager.userId }) else { return 0 }
                         return me["currentBet"] as? Int ?? 0
                     }()
                     
                     let myChips: Int = {
                         guard let players = socketManager.gameState?["players"] as? [[String: Any]],
-                              let me = players.first(where: { $0["name"] as? String == socketManager.localPlayerName }) else { return 0 }
+                              let me = players.first(where: { $0["id"] as? String == authManager.userId }) else { return 0 }
                         return me["chips"] as? Int ?? 0
                     }()
                     
@@ -582,7 +582,7 @@ struct TableView: View {
                     // Action Buttons
                     if stage == "handEnd" {
                         let players = socketManager.gameState?["players"] as? [[String: Any]] ?? []
-                        let me = players.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })
+                        let me = players.first(where: { ($0["id"] as? String) == authManager.userId })
                         let hasCards = me?["hasCards"] as? Bool ?? false
                         let revealedHand = me?["revealedHand"] as? [String] ?? []
                         
@@ -635,7 +635,7 @@ struct TableView: View {
                         withAnimation { showSideMenu = false }
                     }
                 
-                let amISeatedMenu = (socketManager.gameState?["players"] as? [[String: Any]])?.contains(where: { ($0["name"] as? String) == socketManager.localPlayerName }) ?? false
+                let amISeatedMenu = (socketManager.gameState?["players"] as? [[String: Any]])?.contains(where: { ($0["id"] as? String) == authManager.userId }) ?? false
                 
                 VStack(alignment: .leading, spacing: 24) {
                     Text("Menu")
@@ -989,7 +989,7 @@ struct TableView: View {
                     }
                     
                     let players = socketManager.gameState?["players"] as? [[String: Any]] ?? []
-                    let me = players.first(where: { ($0["name"] as? String) == socketManager.localPlayerName })
+                    let me = players.first(where: { ($0["id"] as? String) == authManager.userId })
                     let status = me?["status"] as? String ?? ""
                     let isEligible = status == "active" || status == "all-in"
                     let ritVotes = socketManager.gameState?["ritVotes"] as? [String: Any] ?? [:]
@@ -1085,7 +1085,7 @@ struct TableView: View {
             // Only sync from server if user hasn't toggled recently (prevents rubber-banding)
             if Date().timeIntervalSince(lastToggleTime) > 1.0 {
                 if let players = newState?["players"] as? [[String: Any]],
-                   let me = players.first(where: { ($0["name"] as? String) == socketManager.localPlayerName }),
+                   let me = players.first(where: { ($0["id"] as? String) == authManager.userId }),
                    let serverSitOut = me["isSittingOut"] as? Bool {
                    if isSittingOut != serverSitOut {
                        isSittingOut = serverSitOut

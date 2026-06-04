@@ -6,6 +6,7 @@ class AuthManager: ObservableObject {
     
     @Published var isAuthenticated: Bool = false
     @Published var jwtToken: String? = nil
+    @Published var userId: String? = nil
     @Published var username: String = ""
     @Published var avatar: String = "👽"
     @Published var coins: Int = 0
@@ -54,6 +55,7 @@ class AuthManager: ObservableObject {
         KeychainHelper.shared.save(token, service: service, account: account)
         self.jwtToken = token
         if let user = user {
+            self.userId = user["id"] as? String
             self.username = user["username"] as? String ?? ""
             self.avatar = user["avatar"] as? String ?? "👽"
         }
@@ -64,6 +66,7 @@ class AuthManager: ObservableObject {
     func logout() {
         KeychainHelper.shared.delete(service: service, account: account)
         self.jwtToken = nil
+        self.userId = nil
         self.isAuthenticated = false
         self.username = ""
         self.avatar = "👽"
@@ -79,6 +82,7 @@ class AuthManager: ObservableObject {
             if let data = data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let user = json["user"] as? [String: Any] {
                 DispatchQueue.main.async {
+                    self.userId = user["id"] as? String ?? self.userId
                     self.username = user["username"] as? String ?? self.username
                     self.avatar = user["avatar"] as? String ?? "👽"
                     self.coins = user["coins"] as? Int ?? self.coins
