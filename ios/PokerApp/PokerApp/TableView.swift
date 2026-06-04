@@ -95,10 +95,30 @@ struct TableView: View {
                     
                     if socketManager.gameState?["stage"] as? String == "waiting" || socketManager.gameState == nil {
                         let handCount = socketManager.gameState?["handCount"] as? Int ?? 0
-                        let seatedCount = (socketManager.gameState?["players"] as? [[String: Any]])?.count ?? 0
-                        let canStart = seatedCount >= 2
+                        let players = socketManager.gameState?["players"] as? [[String: Any]] ?? []
+                        let activePlayers = players.filter { ($0["status"] as? String) != "out" }.count
+                        let canStart = (socketManager.isHost && handCount == 0 && activePlayers >= 2)
+                        let isPaused = socketManager.roomState?["isPaused"] as? Bool ?? false
                         
-                        if handCount == 0 {
+                        if isPaused {
+                            VStack(spacing: 8) {
+                                Image(systemName: "pause.circle.fill")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.orange)
+                                Text("Table Paused")
+                                    .font(.title2).bold()
+                                    .foregroundColor(.white)
+                                Text(socketManager.isHost ? "You paused the game. Top up coins or manually resume." : "Waiting for the host to resume the game.")
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .padding(20)
+                            .background(Color.black.opacity(0.85))
+                            .cornerRadius(15)
+                            .shadow(radius: 10)
+                            .position(x: centerX, y: centerY)
+                        } else if handCount == 0 {
                             Button(action: {
                                 socketManager.startGame()
                             }) {

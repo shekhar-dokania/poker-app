@@ -61,6 +61,9 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.user.username} (socket: ${socket.id})`);
+  
+  // Join a personal room to receive targeted events (like coin balance updates)
+  socket.join(`user_${socket.user.userId}`);
 
   socket.on('createRoom', async (data, callback) => {
      try {

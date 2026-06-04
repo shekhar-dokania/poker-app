@@ -67,7 +67,8 @@ class RoomManager {
               
               if (host && host.coins > 0) {
                   // Deduct 1 coin and schedule next billing
-                  await prisma.user.update({ where: { id: hostId }, data: { coins: { decrement: 1 } } });
+                  const updatedHost = await prisma.user.update({ where: { id: hostId }, data: { coins: { decrement: 1 } } });
+                  this.io.to(`user_${hostId}`).emit('profileUpdated', { coins: updatedHost.coins });
                   room.billingPartialMs = 0;
                   await redis.zAdd('room_billing', [{ score: now + 60000, value: roomCode }]);
                   await this.saveRoom(room);
@@ -600,7 +601,11 @@ class RoomManager {
       });
       
       if (room.isPaused) {
-          console.log(`Cannot start next hand in room ${room.code} - paused for coins`);
+          console.log(`Cannot start next hand in room ${room.code} - paused`);
+          room.game.stage = 'waiting';
+          await this.saveRoom(room);
+          this.io.to(room.code).emit('gameState', room.game.getGameState());
+          this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
           return;
       }
       

@@ -72,6 +72,16 @@ class PokerSocketManager: ObservableObject {
             print("Socket disconnected")
         }
         
+        socket.on("profileUpdated") { data, ack in
+            if let update = data[0] as? [String: Any] {
+                DispatchQueue.main.async {
+                    if let newCoins = update["coins"] as? Int {
+                        AuthManager.shared.coins = newCoins
+                    }
+                }
+            }
+        }
+        
         socket.on("roomUpdated") { [weak self] data, ack in
             if let state = data[0] as? [String: Any] {
                 DispatchQueue.main.async {
