@@ -217,6 +217,12 @@ class PokerGame {
         p.potContribution = 0;
         p.hasActed = false;
         p.runItTwiceVote = null;
+        
+        if (p.chips <= 0 && p.status !== 'disconnected') {
+            p.status = 'eliminated';
+        } else if (p.status === 'folded' || p.status === 'all-in' || p.status === 'active') {
+            p.status = 'waiting';
+        }
     });
   }
 
