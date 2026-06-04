@@ -11,6 +11,8 @@ app.use(express.json()); // Added for body parsing
 
 const { authRouter, JWT_SECRET } = require('./auth');
 const jwt = require('jsonwebtoken');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -37,10 +39,20 @@ io.use((socket, next) => {
     }
     
     if (token) {
-        jwt.verify(token, JWT_SECRET, (err, decoded) => {
+        jwt.verify(token, JWT_SECRET, async (err, decoded) => {
             if (err) return next(new Error('Authentication error'));
-            socket.user = decoded;
-            next();
+            
+            try {
+                const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+                if (!user) return next(new Error('User not found'));
+                
+                socket.user = { userId: user.id, username: user.username, avatar: user.avatar };
+                next();
+            } catch (dbErr) {
+                console.error("Failed to fetch user in socket middleware:", dbErr);
+                socket.user = decoded; // Fallback to JWT payload
+                next();
+            }
         });
     } else {
         next(new Error('Authentication error'));
