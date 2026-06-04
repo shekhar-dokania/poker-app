@@ -646,6 +646,17 @@ struct TableView: View {
                     
                     if socketManager.isHost {
                         Divider()
+                        
+                        let isPaused = socketManager.roomState?["isPaused"] as? Bool ?? false
+                        Button(action: {
+                            socketManager.togglePauseRoom()
+                            withAnimation { showSideMenu = false }
+                        }) {
+                            Label(isPaused ? "Resume Table" : "Pause Table", systemImage: isPaused ? "play.circle" : "pause.circle")
+                                .font(.headline)
+                                .foregroundColor(isPaused ? .green : .orange)
+                        }
+                        
                         Button(action: {
                             setSmallBlind = Double(socketManager.roomSettings?["smallBlind"] as? Int ?? 1)
                             setMinBuyIn = Double(socketManager.roomSettings?["minBuyIn"] as? Int ?? 100)
@@ -997,16 +1008,7 @@ struct TableView: View {
                         }
                     }
                     
-                    Section(header: Text("Table Status")) {
-                        let isPaused = socketManager.roomState?["isPaused"] as? Bool ?? false
-                        Button(action: {
-                            socketManager.togglePauseRoom()
-                            showHostSettings = false
-                        }) {
-                            Text(isPaused ? "Resume Table" : "Pause Table")
-                                .foregroundColor(isPaused ? .green : .red)
-                        }
-                    }
+
                     
                     Section(footer: Text("Changes will take effect at the start of the next hand.")) {
                         Button("Save Settings") {

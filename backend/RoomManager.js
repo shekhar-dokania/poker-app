@@ -361,6 +361,14 @@ class RoomManager {
              room.isPaused = false;
          } else {
              room.isPaused = true;
+             
+             // Pause timer if running
+             const score = await redis.zScore('room_billing', room.code);
+             if (score) {
+                 const remainingMs = score - Date.now();
+                 room.billingPartialMs = Math.max(0, 60000 - remainingMs);
+                 await redis.zRem('room_billing', room.code);
+             }
          }
          
          await this.saveRoom(room);
@@ -598,9 +606,12 @@ class RoomManager {
       
       const success = room.game.startGame();
       if (success) {
-         const partial = room.billingPartialMs || 0;
-         const nextBillingMs = Math.max(0, 60000 - partial);
-         await redis.zAdd('room_billing', [{ score: Date.now() + nextBillingMs, value: room.code }]);
+         const score = await redis.zScore('room_billing', room.code);
+         if (!score) {
+             const partial = room.billingPartialMs || 0;
+             const nextBillingMs = Math.max(0, 60000 - partial);
+             await redis.zAdd('room_billing', [{ score: Date.now() + nextBillingMs, value: room.code }]);
+         }
          await this.saveRoom(room);
          this.io.to(room.code).emit('gameState', room.game.getGameState());
          this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
@@ -609,6 +620,15 @@ class RoomManager {
       } else {
          console.log("Not enough players to start next hand in room: " + room.code);
          room.game.stage = 'waiting';
+         
+         // Pause billing timer
+         const score = await redis.zScore('room_billing', room.code);
+         if (score) {
+             const remainingMs = score - Date.now();
+             room.billingPartialMs = Math.max(0, 60000 - remainingMs);
+             await redis.zRem('room_billing', room.code);
+         }
+         
          await this.saveRoom(room);
          this.io.to(room.code).emit('gameState', room.game.getGameState());
          this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
@@ -638,9 +658,12 @@ class RoomManager {
         
         const success = room.game.startGame();
         if (success) {
-           const partial = room.billingPartialMs || 0;
-           const nextBillingMs = Math.max(0, 60000 - partial);
-           await redis.zAdd('room_billing', [{ score: Date.now() + nextBillingMs, value: room.code }]);
+           const score = await redis.zScore('room_billing', room.code);
+           if (!score) {
+               const partial = room.billingPartialMs || 0;
+               const nextBillingMs = Math.max(0, 60000 - partial);
+               await redis.zAdd('room_billing', [{ score: Date.now() + nextBillingMs, value: room.code }]);
+           }
            await this.saveRoom(room);
            this.io.to(room.code).emit('gameState', room.game.getGameState());
            this.io.to(room.code).emit('roomUpdated', await this.getRoomState(room.code));
