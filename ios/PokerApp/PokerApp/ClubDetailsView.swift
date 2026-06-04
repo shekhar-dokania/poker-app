@@ -16,6 +16,9 @@ struct ClubDetailsView: View {
     @State private var smallBlind: Double = 1
     @State private var minBuyIn: Double = 100
     @State private var maxBuyIn: Double = 10000
+    @State private var durationHours: Double = 1
+    
+    @ObservedObject private var authManager = AuthManager.shared
     
     // Past Game selection for ledger
     @State private var selectedPastGame: [String: Any]? = nil
@@ -83,6 +86,10 @@ struct ClubDetailsView: View {
                                 Slider(value: $maxBuyIn, in: 10...50000, step: 10)
                             }
                             
+                            Text("Cost: 1 Coin / minute")
+                                .font(.caption)
+                                .foregroundColor(authManager.coins >= 1 ? .secondary : .red)
+                            
                             Button(action: {
                                 let settings: [String: Any] = [
                                     "smallBlind": Int(smallBlind),
@@ -95,10 +102,11 @@ struct ClubDetailsView: View {
                                 Text("Start Game")
                                     .frame(maxWidth: .infinity)
                                     .padding()
-                                    .background(Color.blue)
+                                    .background(authManager.coins >= 1 ? Color.blue : Color.gray)
                                     .foregroundColor(.white)
                                     .cornerRadius(10)
                             }
+                            .disabled(authManager.coins < 1)
                         }
                         .padding()
                         .background(Color(.systemGray6))

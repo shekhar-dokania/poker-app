@@ -48,10 +48,26 @@ struct LobbyView: View {
                             }
                         }
                     }) {
-                        Text("Claim Daily Free 10")
+                        Text(authManager.canClaimDailyCoins ? "Claim Daily Free 10" : "Claimed Today")
                             .font(.caption)
                             .padding(6)
-                            .background(Color.blue)
+                            .background(authManager.canClaimDailyCoins ? Color.blue : Color.gray)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                    }
+                    .disabled(!authManager.canClaimDailyCoins)
+                    
+                    Button(action: {
+                        authManager.buyMockCoins { success, error in
+                            if let err = error {
+                                print("Buy coins error:", err)
+                            }
+                        }
+                    }) {
+                        Text("Buy 100 Coins (Mock)")
+                            .font(.caption)
+                            .padding(6)
+                            .background(Color.green)
                             .foregroundColor(.white)
                             .cornerRadius(8)
                     }
@@ -146,13 +162,9 @@ struct LobbyView: View {
                                 Text("Max Buy-In: \(Int(maxBuyIn))").frame(width: 120, alignment: .leading)
                                 Slider(value: $maxBuyIn, in: 10...50000, step: 10)
                             }
-                            HStack {
-                                Text("Duration: \(Int(durationHours)) hr").frame(width: 120, alignment: .leading)
-                                Slider(value: $durationHours, in: 1...12, step: 1)
-                            }
-                            Text("Cost: \(Int(durationHours * 10)) Coins")
+                            Text("Cost: 1 Coin / minute")
                                 .font(.caption)
-                                .foregroundColor(authManager.coins >= Int(durationHours * 10) ? .secondary : .red)
+                                .foregroundColor(authManager.coins >= 1 ? .secondary : .red)
                         }
                         .padding(.horizontal)
                     }
@@ -163,8 +175,7 @@ struct LobbyView: View {
                                 "smallBlind": Int(smallBlind),
                                 "bigBlind": Int(smallBlind) * 2,
                                 "minBuyIn": Int(minBuyIn),
-                                "maxBuyIn": max(Int(minBuyIn), Int(maxBuyIn)),
-                                "durationHours": Int(durationHours)
+                                "maxBuyIn": max(Int(minBuyIn), Int(maxBuyIn))
                             ]
                             socketManager.createRoom(hostName: storedUsername, gameType: selectedGameType, settings: settings)
                         }
@@ -172,12 +183,12 @@ struct LobbyView: View {
                         Text("Create Room")
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(authManager.coins >= Int(durationHours * 10) ? Color.blue : Color.gray)
+                            .background(authManager.coins >= 1 ? Color.blue : Color.gray)
                             .foregroundColor(.white)
                             .cornerRadius(10)
                     }
                     .padding(.horizontal)
-                    .disabled(storedUsername.isEmpty || authManager.coins < Int(durationHours * 10))
+                    .disabled(storedUsername.isEmpty || authManager.coins < 1)
                 }
                 
                 Divider()

@@ -15,7 +15,6 @@ struct TableView: View {
     @State private var setMinBuyIn: Double = 100
     @State private var setMaxBuyIn: Double = 10000
     @State private var setTurnTimeLimit: Double = 30
-    @State private var extendHours: Double = 1.0
     @State private var showSideMenu: Bool = false
     @State private var showLedgerModal: Bool = false
     @State private var showHandHistoryModal: Bool = false
@@ -998,20 +997,14 @@ struct TableView: View {
                         }
                     }
                     
-                    Section(header: Text("Hosting Time")) {
-                        HStack {
-                            Text("Extend: \(Int(extendHours)) hr").frame(width: 120, alignment: .leading)
-                            Slider(value: $extendHours, in: 1...12, step: 1)
-                        }
-                        HStack {
-                            Text("Cost: \(Int(extendHours * 10)) Coins")
-                                .foregroundColor(authManager.coins >= Int(extendHours * 10) ? .secondary : .red)
-                            Spacer()
-                            Button("Buy Time") {
-                                socketManager.extendRoomTime(additionalHours: Int(extendHours))
-                                showHostSettings = false
-                            }
-                            .disabled(authManager.coins < Int(extendHours * 10))
+                    Section(header: Text("Table Status")) {
+                        let isPaused = socketManager.roomState?["isPaused"] as? Bool ?? false
+                        Button(action: {
+                            socketManager.togglePauseRoom()
+                            showHostSettings = false
+                        }) {
+                            Text(isPaused ? "Resume Table" : "Pause Table")
+                                .foregroundColor(isPaused ? .green : .red)
                         }
                     }
                     

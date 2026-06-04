@@ -164,18 +164,32 @@ class PokerSocketManager: ObservableObject {
             }
         }
     }
+
     
-    func extendRoomTime(additionalHours: Int) {
-        guard let code = currentRoom else { return }
-        let data: [String: Any] = ["roomCode": code, "additionalHours": additionalHours]
-        socket.emitWithAck("extendRoomTime", data).timingOut(after: 2) { data in
-            if let response = data.first as? [String: Any],
-               let success = response["success"] as? Bool,
-               success {
-                AuthManager.shared.fetchMe() // Refresh coins
-            } else {
-                let msg = (data.first as? [String: Any])?["message"] as? String ?? "Failed"
-                print("Extend room time failed: \(msg)")
+    func resumeRoom() {
+        guard let room = currentRoom else { return }
+        let data: [String: Any] = ["roomCode": room]
+        socket.emitWithAck("resumeRoom", data).timingOut(after: 2) { data in
+            if let response = data.first as? [String: Any] {
+                if let success = response["success"] as? Bool, success {
+                    print("Room resumed successfully")
+                } else if let message = response["message"] as? String {
+                    print("Resume Failed: \(message)")
+                }
+            }
+        }
+    }
+    
+    func togglePauseRoom() {
+        guard let room = currentRoom else { return }
+        let data: [String: Any] = ["roomCode": room]
+        socket.emitWithAck("togglePauseRoom", data).timingOut(after: 2) { data in
+            if let response = data.first as? [String: Any] {
+                if let success = response["success"] as? Bool, success {
+                    print("Room pause toggled successfully")
+                } else if let message = response["message"] as? String {
+                    print("Toggle Pause Failed: \(message)")
+                }
             }
         }
     }

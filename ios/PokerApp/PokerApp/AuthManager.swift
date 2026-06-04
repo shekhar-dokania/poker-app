@@ -11,6 +11,28 @@ class AuthManager: ObservableObject {
     @Published var coins: Int = 0
     @Published var lastFreeClaim: String? = nil
     
+    var canClaimDailyCoins: Bool {
+        guard let lastClaimStr = lastFreeClaim, !lastClaimStr.isEmpty else { return true }
+        
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+        var date = formatter.date(from: lastClaimStr)
+        
+        if date == nil {
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+            date = formatter.date(from: lastClaimStr)
+        }
+        
+        guard let lastClaimDate = date else {
+            print("Failed to parse lastFreeClaim date string: \(lastClaimStr)")
+            return false // Safe fallback: if they have a claim string, don't let them claim
+        }
+        
+        let elapsed = Date().timeIntervalSince(lastClaimDate)
+        return elapsed >= 86400
+    }
+    
     private let service = "com.pokerapp.auth"
     private let account = "jwt_token"
     
@@ -107,6 +129,33 @@ class AuthManager: ObservableObject {
                         completion(true, nil)
                     } else {
                         completion(false, json["error"] as? String ?? "Failed to claim coins")
+                    }
+                }
+            }
+        }.resume()
+    }
+    
+    func buyMockCoins(completion: @escaping (Bool, String?) -> Void) {
+        guard let token = jwtToken, let url = URL(string: "\(AppConfig.serverURL)/auth/buy-coins-mock") else {
+            completion(false, "Invalid URL or Token")
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                DispatchQueue.main.async { completion(false, error.localizedDescription) }
+                return
+            }
+            if let data = data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                DispatchQueue.main.async {
+                    if let success = json["success"] as? Bool, success {
+                        self.coins = json["coins"] as? Int ?? self.coins
+                        completion(true, nil)
+                    } else {
+                        completion(false, json["error"] as? String ?? "Failed to buy coins")
                     }
                 }
             }
