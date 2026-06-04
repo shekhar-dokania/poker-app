@@ -2,7 +2,6 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { SignedDataVerifier, Environment } = require('@apple/app-store-server-library');
-const AppConfig = require('../shared/AppConfig');
 const fs = require('fs');
 const path = require('path');
 const { PrismaClient } = require('@prisma/client');
