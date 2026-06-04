@@ -149,7 +149,7 @@ router.post('/verify-receipt', authenticateToken, async (req, res) => {
     }
 });
 
-authRouter.post('/verify-play-receipt', authenticateToken, async (req, res) => {
+router.post('/verify-play-receipt', authenticateToken, async (req, res) => {
     const { purchaseToken, productId } = req.body;
     
     if (!purchaseToken || !productId) {
