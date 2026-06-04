@@ -67,13 +67,17 @@ class RoomManager {
                   return;
               }
               const hostId = room.host;
-              const host = await prisma.user.findUnique({ where: { id: hostId } });
               
-              if (host && host.coins > 0) {
-                  // Deduct 1 coin and schedule next billing
+              const result = await prisma.user.updateMany({
+                  where: { id: hostId, coins: { gt: 0 } },
+                  data: { coins: { decrement: 1 } }
+              });
+              
+              if (result.count > 0) {
+                  // Successfully deducted 1 coin atomically
                   room.totalActiveTimeMs = (room.totalActiveTimeMs || 0) + 60000;
-                  const updatedHost = await prisma.user.update({ where: { id: hostId }, data: { coins: { decrement: 1 } } });
-                  this.io.to(`user_${hostId}`).emit('profileUpdated', { coins: updatedHost.coins });
+                  const updatedHost = await prisma.user.findUnique({ where: { id: hostId } });
+                  this.io.to(`user_${hostId}`).emit('profileUpdated', { coins: updatedHost?.coins || 0 });
                   room.billingPartialMs = 0;
                   await redis.zAdd('room_billing', [{ score: now + 60000, value: roomCode }]);
                   await this.saveRoom(room);
